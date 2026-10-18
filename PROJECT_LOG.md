@@ -55,4 +55,3 @@ now supports cu130. So Visage installs onnxruntime itself, but only when none is
 - More swappers: SimSwap 512 / Ghost (need crossface embedding converters), AlphaFace.
 - Face similarity readout in the UI; per-face preview of detected indexes.
 - Video (Forge Neo video models / frame-by-frame).
-- `localizations/pt_BR.json`.
