@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+# never commit weights or personal face models
+*.onnx
+*.safetensors
+*.part
+tests/data/
+.DS_Store
+Thumbs.db
+AGENTS.local.md
