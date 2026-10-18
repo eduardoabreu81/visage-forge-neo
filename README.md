@@ -34,7 +34,6 @@ start, which breaks other extensions. Visage avoids both problems:
 | **Refine (Forge only)** | low-denoise inpaint of the swapped face with the loaded checkpoint, so the face picks up the image's lighting, grain and style; then an optional second swap restores the identity the inpaint may have drifted from |
 | **Preview & test** | numbered face boxes (with gender/age) for the source and any test image, and "try swap" without generating |
 | **Identity check** | prints the ArcFace similarity of each swapped face to its source (≈0.75 is a solid HyperSwap result) |
-| **Languages** | English, Português (Brasil) |
 | **Where** | txt2img, img2img (generated image and/or the img2img input), Extras tab (swap or restore only, batch too), REST API |
 | **Runtime** | CUDA, ROCm, MIGraphX, DirectML, CoreML or CPU, picked automatically or pinned in Settings |
 

@@ -9,7 +9,7 @@
   the refined lighting. The default refine denoise is now 0.15.
 - New: per-face ArcFace similarity in the console (`visage_report_similarity`) and in `Result.similarity`.
 - New: Source → "Show detected source faces" and Target → "Test on an image" (face indexes, "try swap"), using `lib_visage/preview.py`.
-- New: `localizations/pt_BR.json`.
+- Added `localizations/pt_BR.json`, then removed it: the UI stays English-only, like the other extensions.
 - Note: Forge replaces `print` with a tqdm logging handler, so lines printed right after a nested process_images can
   be missing from a redirected console log. The code still runs; this was verified with a file probe.
 
