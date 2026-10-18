@@ -68,6 +68,38 @@ def build_options(s: dict) -> pipeline.Options:
     )
 
 
+def infotext_params(opts: pipeline.Options, s: dict) -> dict:
+    """Generation-info entries, read back by PNG Info / Send to (see paste_fields)."""
+    params = {
+        "Visage": opts.swapper,
+        "Visage strength": f"{opts.strength:g}",
+        "Visage faces": opts.target_indexes,
+    }
+    if opts.pixel_boost > 1:
+        params["Visage boost"] = f"{opts.pixel_boost}x"
+    if opts.restorer and opts.restorer != "none":
+        params["Visage restorer"] = opts.restorer
+        params["Visage restorer visibility"] = f"{opts.restorer_visibility:g}"
+    if s.get("refine"):
+        params["Visage refine"] = f"{float(s.get('refine_denoise') or 0.15):g}"
+    return params
+
+
+def paste_fields(c: dict) -> list:
+    """(component, infotext key or callable) pairs: pasting an infotext restores the Visage panel."""
+    return [
+        (c["enabled"], lambda d: "Visage" in d),
+        (c["swapper"], lambda d: d.get("Visage") if d.get("Visage") in vf.SWAPPERS else None),
+        (c["strength"], "Visage strength"),
+        (c["target_indexes"], "Visage faces"),
+        (c["pixel_boost"], lambda d: d.get("Visage boost", "1x") if "Visage" in d else None),
+        (c["restorer"], lambda d: d.get("Visage restorer", "none") if "Visage" in d else None),
+        (c["restorer_visibility"], "Visage restorer visibility"),
+        (c["refine"], lambda d: "Visage refine" in d if "Visage" in d else None),
+        (c["refine_denoise"], "Visage refine"),
+    ]
+
+
 def _similarity_note(result) -> str:
     if not result.similarity:
         return ""
@@ -87,6 +119,21 @@ def _status_models() -> str:
         f"Available providers: {providers}\n\n"
         "| | Model | Kind | License |\n|---|---|---|---|\n" + "\n".join(rows)
     )
+
+
+def _verify_models() -> str:
+    ok, bad = [], []
+    for key in models.REGISTRY:
+        res = models.verify(key)
+        if res is True:
+            ok.append(key)
+        elif res is False:
+            bad.append(key)
+    if bad:
+        head = f"⚠️ {len(bad)} model(s) do not match their pinned SHA-256; delete and re-download: " + ", ".join(f"`{b}`" for b in bad)
+    else:
+        head = f"✅ Verified {len(ok)} downloaded model(s): all match their pinned SHA-256."
+    return head + "\n\n" + _status_models()
 
 
 def _safe_provider() -> str:
@@ -263,6 +310,7 @@ class VisageScript(scripts.Script):
                     with gr.Row():
                         gr.Button("🔄 Refresh").click(lambda: _status_models(), None, status, show_progress=False)
                         gr.Button("🧹 Unload models from memory").click(lambda: f"Unloaded {runtime.unload()} session(s).\n\n" + _status_models(), None, status)
+                        gr.Button("🔐 Verify downloaded models (SHA-256)").click(_verify_models, None, status)
 
         inputs = [c[k] for k in ARG_KEYS if k in c]
 
@@ -315,6 +363,9 @@ class VisageScript(scripts.Script):
         test_prev_btn.click(_test_preview, [test_img] + inputs, [test_out, test_md])
         test_swap_btn.click(_test_swap, [test_img] + inputs, [test_out, test_md])
 
+        self.infotext_fields = paste_fields(c)
+        self.paste_field_names = [key for _, key in self.infotext_fields if isinstance(key, str)]
+
         missing = [k for k in ARG_KEYS if k not in c]
         assert not missing, f"Visage UI is missing components: {missing}"
         return [c[k] for k in ARG_KEYS]
@@ -333,6 +384,7 @@ class VisageScript(scripts.Script):
         if getattr(p, "_visage_nested", False):
             return
         s = _settings(args)
+        s.update(getattr(p, "_visage_xyz", None) or {})  # X/Y/Z plot axes (scripts/visage_xyz.py)
         self._job = None
         if not s.get("enabled"):
             return
@@ -347,9 +399,7 @@ class VisageScript(scripts.Script):
             print("[Visage] no source identity - nothing to do (check the Source tab)")
             return
         self._job = (opts, idents, s)
-        p.extra_generation_params["Visage"] = f"{opts.swapper}, strength {opts.strength:g}, faces {opts.target_indexes}"
-        if s.get("refine"):
-            p.extra_generation_params["Visage refine"] = f"denoise {float(s['refine_denoise']):g}"
+        p.extra_generation_params.update(infotext_params(opts, s))
 
         if s.get("swap_init") and getattr(p, "init_images", None):
             swapped = []

@@ -9,10 +9,13 @@ to each entry and surfaced in the UI.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import threading
 import urllib.request
 from dataclasses import dataclass, field
+
+from .hashes import MODEL_HASHES
 
 _FF_HF = "https://huggingface.co/facefusion/{release}/resolve/main/{file}"
 _FF_GH = "https://github.com/facefusion/facefusion-assets/releases/download/{release}/{file}"
@@ -192,19 +195,37 @@ def ensure(key: str, progress=None) -> str:
         errors = []
         for url in REGISTRY[key].urls:
             try:
-                _download(url, path, progress)
+                _download(url, path, progress, MODEL_HASHES.get(key))
                 return path
             except Exception as e:  # try the next mirror
                 errors.append(f"{url}: {e}")
         raise ModelUnavailable(f"Could not download '{key}':\n  " + "\n  ".join(errors))
 
 
-def _download(url: str, path: str, progress=None) -> None:
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 22), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify(key: str) -> bool | None:
+    """True / False against the pinned SHA-256; None when the model is missing or has no pinned hash."""
+    path = local_path(key)
+    expected = MODEL_HASHES.get(key)
+    if not os.path.isfile(path) or expected is None:
+        return None
+    return os.path.getsize(path) == expected[1] and _sha256(path) == expected[0]
+
+
+def _download(url: str, path: str, progress=None, expected: tuple[str, int] | None = None) -> None:
     part = path + ".part"
     name = os.path.basename(path)
     req = urllib.request.Request(url, headers={"User-Agent": "visage-forge-neo"})
     print(f"[Visage] Downloading {name} ...")
     try:
+        digest = hashlib.sha256()
         with urllib.request.urlopen(req, timeout=60) as resp, open(part, "wb") as out:
             total = int(resp.headers.get("Content-Length") or 0)
             done = 0
@@ -214,6 +235,7 @@ def _download(url: str, path: str, progress=None) -> None:
                 if not chunk:
                     break
                 out.write(chunk)
+                digest.update(chunk)
                 done += len(chunk)
                 if total:
                     pct = done * 100 // total
@@ -224,6 +246,8 @@ def _download(url: str, path: str, progress=None) -> None:
                         progress(done / total, desc=f"Downloading {name}")
         if total and done != total:
             raise IOError(f"incomplete download ({done} of {total} bytes)")
+        if expected is not None and (digest.hexdigest() != expected[0] or done != expected[1]):
+            raise IOError(f"SHA-256 mismatch for {name}: got {digest.hexdigest()[:12]}..., expected {expected[0][:12]}...")
         os.replace(part, path)
     finally:
         if os.path.exists(part):

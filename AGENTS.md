@@ -27,6 +27,11 @@ scripts/
   visage.py           AlwaysVisible script (txt2img / img2img UI and hooks)
   visage_extras.py    Extras tab postprocessing
   visage_api.py       /visage/v1/* FastAPI routes
+  visage_xyz.py       X/Y/Z plot axes (override panel values via p._visage_xyz)
+lib_visage/hashes.py  pinned SHA-256 + size per model (regenerate from HF LFS metadata when adding models)
+lib_visage/safety.py  optional SFW filter
+lib_visage/preview.py annotated face previews
+tools/sfw_check.py    measure the SFW filter on a local folder
 tests/test_core.py    unit tests, plus model tests when VISAGE_MODELS_DIR and VISAGE_TEST_IMAGES are set
 ```
 

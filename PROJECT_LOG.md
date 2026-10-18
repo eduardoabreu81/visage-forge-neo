@@ -1,5 +1,20 @@
 # PROJECT_LOG
 
+## 2026-10-18 — 0.3.0, integrity, PNG info round-trip, X/Y/Z
+
+- SHA-256 pinned for all 38 models (`lib_visage/hashes.py`), taken from the upstream Hugging Face LFS metadata.
+  The 24 files already on disk all matched. Downloads are hashed while they stream, and a mismatch deletes the file.
+  New "🔐 Verify downloaded models" button in the Models tab.
+- Infotext is now structured: `Visage`, `Visage strength`, `Visage faces`, `Visage boost`, `Visage restorer`,
+  `Visage restorer visibility`, `Visage refine`. `infotext_fields` restores them. Verified in the UI: pasting the
+  parameters set every field (enabled, ghost_1_256, 0.8, 0, 2x, gfpgan_1.4, 0.6, refine on, 0.12).
+- X/Y/Z axes (`scripts/visage_xyz.py`, registered on_before_ui, values on `p._visage_xyz`). Verified with a 2x2 grid
+  through the API (HyperSwap/GHOST × strength 0.5/1.0), with the correct infotext in each cell.
+  Note: axes that have choices read their values from the dropdown list, not from the text field.
+  Seen in the grid: at strength 0.5, HyperSwap stays close to the target (0.03) while GHOST is halfway (0.54).
+  How strength behaves depends on the model.
+- Extras tab tested in the UI: 6 of 6 faces swapped, with GFPGAN, in 17.8 s on CPU.
+
 ## 2026-10-18 — 0.2.0, more swappers and an optional SFW filter
 
 - New swappers: AlphaFace 256 (0.85), GHOST 1/2/3 256 (GHOST 1: 0.82), SimSwap 256 (0.70) and unofficial 512 (0.62),

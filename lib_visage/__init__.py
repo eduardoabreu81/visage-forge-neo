@@ -1,3 +1,3 @@
 """Visage core: ONNX-only face swap / restore pipeline (no insightface, no Forge imports)."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

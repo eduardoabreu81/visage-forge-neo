@@ -5,7 +5,7 @@ Face swap, face restoration and checkpoint refine for
 It only uses ONNX: **no insightface, no C++ build tools, no second Python install.** It runs on
 Python 3.13+, numpy 2 and Pillow 12/13, which is the stack Neo ships with.
 
-> **Status:** early preview (0.2.0). The core pipeline is tested; the Forge UI is new. Please report issues.
+> **Status:** early preview (0.3.0). The core pipeline is tested; the Forge UI is new. Please report issues.
 
 ## Why another face swap extension?
 
@@ -36,6 +36,9 @@ start, which breaks other extensions. Visage avoids both problems:
 | **Identity check** | prints the ArcFace similarity of each swapped face to its source (≈0.75 is a solid HyperSwap result) |
 | **Where** | txt2img, img2img (generated image and/or the img2img input), Extras tab (swap or restore only, batch too), REST API |
 | **SFW filter (optional)** | off by default. When on, it skips or blurs images that at least 2 of 3 NSFW models flag. Its models are downloaded only when you enable it |
+| **Generation info** | swap model, strength, faces, boost, restorer and refine are written to the PNG info. **PNG Info / Send to** restores them in the panel (the source face is not stored) |
+| **X/Y/Z plot** | axes for swap model, identity strength, pixel boost, face restorer, restorer visibility, refine denoise, target faces |
+| **Integrity** | every model has a pinned SHA-256. A download that does not match is discarded; **Models → Verify** re-checks the files on disk |
 | **Runtime** | CUDA, ROCm, MIGraphX, DirectML, CoreML or CPU, picked automatically or pinned in Settings |
 
 ## Install

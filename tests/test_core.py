@@ -164,3 +164,29 @@ def test_sfw_off_never_loads_models(monkeypatch):
     frame = np.zeros((32, 32, 3), np.uint8)
     r = pipeline.process(frame, [facemodel.Identity(np.ones(512, np.float32))], pipeline.Options())
     assert not r.flagged
+
+
+def test_every_model_has_a_pinned_hash():
+    from lib_visage.hashes import MODEL_HASHES
+
+    missing = [k for k in models.REGISTRY if k not in MODEL_HASHES]
+    assert not missing, missing
+    assert all(len(sha) == 64 and size > 0 for sha, size in MODEL_HASHES.values())
+
+
+def test_download_rejects_bad_hash(tmp_path):
+    import hashlib
+
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"visage" * 1000)
+    url = src.resolve().as_uri()
+    good = (hashlib.sha256(src.read_bytes()).hexdigest(), src.stat().st_size)
+
+    dst = tmp_path / "ok.onnx"
+    models._download(url, str(dst), expected=good)
+    assert dst.read_bytes() == src.read_bytes()
+
+    bad = tmp_path / "bad.onnx"
+    with pytest.raises(IOError):
+        models._download(url, str(bad), expected=("0" * 64, good[1]))
+    assert not bad.exists() and not (tmp_path / "bad.onnx.part").exists()
