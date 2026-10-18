@@ -9,6 +9,7 @@ user pins one in settings.
 from __future__ import annotations
 
 import gc
+import os
 import threading
 
 from . import models
@@ -91,6 +92,41 @@ def active_provider() -> str:
     return p[0] if isinstance(p, tuple) else p
 
 
+def ort_gpu_spec(cuda_major: int | None) -> str:
+    """onnxruntime-gpu on PyPI is built for CUDA 13 from 1.27 on, CUDA 12 before that."""
+    return "onnxruntime-gpu<1.27" if cuda_major is not None and cuda_major < 13 else "onnxruntime-gpu>=1.27"
+
+
+def gpu_hint(nvidia: bool, cuda_major: int | None = None) -> str | None:
+    """Advice for when an NVIDIA GPU is there but the installed onnxruntime can only use the CPU."""
+    available = available_providers()
+    if not nvidia or not available or {"CUDAExecutionProvider", "TensorrtExecutionProvider"} & set(available):
+        return None
+    py = r"venv\Scripts\python" if os.name == "nt" else "venv/bin/python"
+    return (
+        "Visage is running on the CPU: this machine has an NVIDIA GPU, but the installed onnxruntime has no CUDA support. "
+        f"Close Forge and run, in the Forge folder: `{py} -m pip uninstall -y onnxruntime` and then "
+        f"`{py} -m pip install \"{ort_gpu_spec(cuda_major)}\"`. Visage never changes onnxruntime on its own."
+    )
+
+
+_cuda_dlls_ready = False
+
+
+def _prepare_cuda():
+    """Let onnxruntime find the CUDA / cuDNN DLLs that PyTorch already ships (onnxruntime >= 1.21)."""
+    global _cuda_dlls_ready
+    if _cuda_dlls_ready:
+        return
+    _cuda_dlls_ready = True
+    preload = getattr(ort(), "preload_dlls", None)
+    if preload is not None:
+        try:
+            preload()
+        except Exception:
+            pass
+
+
 def session(key: str, progress=None):
     path = models.ensure(key, progress)
     provider = active_provider()
@@ -99,6 +135,8 @@ def session(key: str, progress=None):
         sess = _sessions.get(cache_key)
         if sess is None:
             rt = ort()
+            if provider in ("CUDAExecutionProvider", "TensorrtExecutionProvider"):
+                _prepare_cuda()
             opts = rt.SessionOptions()
             opts.log_severity_level = 3
             opts.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL

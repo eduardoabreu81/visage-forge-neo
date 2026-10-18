@@ -56,6 +56,23 @@ def apply_settings():
     runtime.provider_preference = getattr(shared.opts, "visage_provider", "auto") or "auto"
 
 
+def cuda_major() -> int | None:
+    """CUDA major version PyTorch was built for, when it can see an NVIDIA GPU."""
+    try:
+        import torch
+
+        if torch.cuda.is_available() and torch.version.cuda:
+            return int(torch.version.cuda.split(".")[0])
+    except Exception:
+        pass
+    return None
+
+
+def gpu_hint() -> str | None:
+    major = cuda_major()
+    return runtime.gpu_hint(major is not None, major)
+
+
 def sfw_mode() -> str:
     mode = getattr(shared.opts, "visage_sfw_mode", "off") if hasattr(shared, "opts") else "off"
     return mode if mode in ("off", "skip", "blur") else "off"
@@ -175,8 +192,21 @@ def resolve_identities(source_type: str, source_image, source_files, face_model:
 
 # --- refine pass (Forge only) ----------------------------------------------------------
 
+def extend_mask_down(mask: np.ndarray, extend: float) -> np.ndarray:
+    """Add an ellipse under each masked face, `extend` x its height below the jaw: room for a beard."""
+    if extend <= 0:
+        return mask
+    out = mask.copy()
+    count, _, stats, _ = cv2.connectedComponentsWithStats((mask > 0).astype(np.uint8))
+    for x, y, w, h, _area in stats[1:count]:
+        top, bottom = y + h * 0.5, y + h * (1 + extend)
+        center = (int(x + w / 2), int((top + bottom) / 2))
+        cv2.ellipse(out, center, (int(w * 0.46), int((bottom - top) / 2)), 0, 0, 360, 255, -1)
+    return out
+
+
 def refine(p, image: Image.Image, face_mask: np.ndarray, denoise: float, steps: int, padding: int,
-           prompt: str, negative: str, index: int) -> Image.Image:
+           prompt: str, negative: str, index: int, extend_down: float = 0.0) -> Image.Image:
     """Low-denoise inpaint of the swapped area with the loaded checkpoint, so the new face
     picks up the scene's lighting, grain and style. Runs a nested img2img with scripts disabled."""
     from modules.processing import StableDiffusionProcessingImg2Img, process_images
@@ -184,6 +214,7 @@ def refine(p, image: Image.Image, face_mask: np.ndarray, denoise: float, steps: 
     mask = (cv2.dilate((face_mask > 0.15).astype(np.uint8) * 255, np.ones((9, 9), np.uint8)))
     if mask.max() == 0:
         return image
+    mask = extend_mask_down(mask, extend_down)
     mask_img = Image.fromarray(mask, mode="L")
 
     def pick(values, fallback):

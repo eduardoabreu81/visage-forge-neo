@@ -18,6 +18,7 @@ lib_visage/           core package, importable without Forge
   runtime.py          onnxruntime sessions and provider selection
   analysis.py         detection (SCRFD/RetinaFace, YOLOv8-face), ArcFace embedding, FairFace, sorting
   swapper.py          inswapper / ReSwapper (emap projection) and HyperSwap
+  onnxread.py         reads the emap initializer from the .onnx bytes (no `onnx` / `protobuf` dependency)
   masks.py            box, XSeg occlusion, BiSeNet regions
   restorer.py         GFPGAN / CodeFormer / GPEN / RestoreFormer++
   facemodel.py        Identity, average, .safetensors face models (and ReActor face models)

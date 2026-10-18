@@ -12,10 +12,58 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib_visage import analysis, facemodel, geometry, masks, models, pipeline, swapper  # noqa: E402
+from lib_visage import analysis, facemodel, geometry, masks, models, onnxread, pipeline, swapper  # noqa: E402
 
 MODELS = os.environ.get("VISAGE_MODELS_DIR")
 IMAGES = os.environ.get("VISAGE_TEST_IMAGES")
+
+
+def _pb_varint(n):
+    out = bytearray()
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        out.append(b | (0x80 if n else 0))
+        if not n:
+            return bytes(out)
+
+
+def _pb_len(num, payload):
+    return _pb_varint(num << 3 | 2) + _pb_varint(len(payload)) + payload
+
+
+def _pb_int(num, value):
+    return _pb_varint(num << 3) + _pb_varint(value)
+
+
+def test_gpu_hint(monkeypatch):
+    from lib_visage import runtime
+
+    assert runtime.ort_gpu_spec(13) == "onnxruntime-gpu>=1.27"
+    assert runtime.ort_gpu_spec(12) == "onnxruntime-gpu<1.27"
+    monkeypatch.setattr(runtime, "available_providers", lambda: ["CPUExecutionProvider"])
+    assert runtime.gpu_hint(False) is None
+    assert "onnxruntime-gpu<1.27" in runtime.gpu_hint(True, 12)
+    monkeypatch.setattr(runtime, "available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert runtime.gpu_hint(True, 13) is None
+
+
+def test_onnxread_last_initializer(tmp_path):
+    first = np.arange(6, dtype=np.float32).reshape(2, 3)
+    emap = np.linspace(-1, 1, 12, dtype=np.float32).reshape(3, 4)
+    half = np.array([0.5, -2.0], dtype=np.float16)
+
+    def raw(a):  # packed dims, FLOAT, name, raw_data
+        return (_pb_len(1, b"".join(_pb_varint(d) for d in a.shape)) + _pb_int(2, 1)
+                + _pb_len(8, b"w") + _pb_len(9, a.astype("<f4").tobytes()))
+
+    fp16 = _pb_int(1, 2) + _pb_int(2, 10) + _pb_len(5, b"".join(_pb_varint(int(v)) for v in half.view(np.uint16)))
+    for tensors, expected in (([raw(first), raw(emap)], emap), ([raw(first), fp16], half)):
+        graph = _pb_len(1, _pb_len(1, b"node")) + b"".join(_pb_len(5, t) for t in tensors)
+        path = tmp_path / "m.onnx"
+        path.write_bytes(_pb_int(1, 8) + _pb_len(7, graph) + _pb_len(8, _pb_int(2, 13)))
+        got = onnxread.last_initializer(str(path))
+        assert got.dtype == expected.dtype and np.array_equal(got, expected)
 
 
 def test_pixel_boost_roundtrip():

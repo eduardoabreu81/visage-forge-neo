@@ -28,7 +28,7 @@ ARG_KEYS = [
     "mask_occlusion", "occluder", "mask_region", "regions", "region_dilate", "keep_mouth",
     "restorer", "restorer_visibility", "codeformer_weight", "face_boost",
     "refine", "refine_denoise", "refine_steps", "refine_padding", "refine_prompt", "refine_negative",
-    "refine_reswap",
+    "refine_reswap", "refine_extend_down",
 ]
 
 
@@ -82,6 +82,8 @@ def infotext_params(opts: pipeline.Options, s: dict) -> dict:
         params["Visage restorer visibility"] = f"{opts.restorer_visibility:g}"
     if s.get("refine"):
         params["Visage refine"] = f"{float(s.get('refine_denoise') or 0.15):g}"
+        if s.get("refine_extend_down"):
+            params["Visage refine extend"] = f"{float(s.get('refine_extend_down')):g}"
     return params
 
 
@@ -97,6 +99,7 @@ def paste_fields(c: dict) -> list:
         (c["restorer_visibility"], "Visage restorer visibility"),
         (c["refine"], lambda d: "Visage refine" in d if "Visage" in d else None),
         (c["refine_denoise"], "Visage refine"),
+        (c["refine_extend_down"], lambda d: d.get("Visage refine extend", 0) if "Visage" in d else None),
     ]
 
 
@@ -114,8 +117,10 @@ def _status_models() -> str:
             mark = "✅" if models.is_downloaded(key) else "⬇️"
             rows.append(f"| {mark} | {spec.title} | {kind} | {spec.license} |")
     providers = ", ".join(runtime.available_providers()) or "onnxruntime not available"
+    hint = vf.gpu_hint()
     return (
-        f"**Visage {__version__}** · models: `{models.models_dir()}` · active provider: `{_safe_provider()}`\n\n"
+        (f"⚠️ {hint}\n\n" if hint else "")
+        + f"**Visage {__version__}** · models: `{models.models_dir()}` · active provider: `{_safe_provider()}`\n\n"
         f"Available providers: {providers}\n\n"
         "| | Model | Kind | License |\n|---|---|---|---|\n" + "\n".join(rows)
     )
@@ -264,6 +269,10 @@ class VisageScript(scripts.Script):
                     c["refine_negative"] = gr.Textbox("", label="Refine negative prompt (empty = generation negative)", lines=1, elem_id=eid("refine_negative"))
                     c["refine_reswap"] = gr.Checkbox(True, label="Swap again after refining (keeps the identity, keeps the new lighting)",
                                                      elem_id=eid("refine_reswap"))
+                    c["refine_extend_down"] = gr.Slider(0, 60, 0, step=5, label="Extend the refine area below the jaw (% of face height)",
+                                                        elem_id=eid("refine_extend_down"),
+                                                        info="the swapper only redraws the face; use 30-50 with a refine prompt "
+                                                             "that describes the beard to carry a full beard over")
 
                 with gr.Tab("Face models"):
                     gr.Markdown("Save the current source as a reusable face model, or blend saved models into a new one.")
@@ -441,7 +450,7 @@ class VisageScript(scripts.Script):
                 try:
                     out = vf.refine(p, out, result.face_mask, s.get("refine_denoise") or 0.15, int(s.get("refine_steps") or 0),
                                     int(s.get("refine_padding") or 48), s.get("refine_prompt") or "", s.get("refine_negative") or "",
-                                    pp.index)
+                                    pp.index, float(s.get("refine_extend_down") or 0) / 100)
                     if s.get("refine_reswap", True):
                         again = pipeline.process(np.array(out.convert("RGB")), idents, opts)
                         print(f"[Visage] after refine: {again.message}{_similarity_note(again)}")
@@ -464,4 +473,14 @@ class VisageScript(scripts.Script):
             runtime.unload()
 
 
+def _startup_notice(*_):
+    try:
+        hint = vf.gpu_hint()
+    except Exception:
+        hint = None
+    if hint:
+        print(f"[Visage] {hint.replace('`', '')}")
+
+
 script_callbacks.on_ui_settings(vf.register_settings)
+script_callbacks.on_app_started(_startup_notice)

@@ -10,3 +10,5 @@ tests/data/
 .DS_Store
 Thumbs.db
 AGENTS.local.md
+
+.local/

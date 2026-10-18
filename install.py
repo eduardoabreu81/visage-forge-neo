@@ -62,6 +62,24 @@ def torch_flavour() -> str:
     return "other"
 
 
+def torch_cuda_major() -> int | None:
+    """13 for torch 2.x+cu130, 12 for +cu128, None when torch is not a CUDA build."""
+    try:
+        version = metadata.version("torch")
+    except metadata.PackageNotFoundError:
+        return None
+    if "+cu" not in version:
+        return None
+    digits = version.split("+cu", 1)[1]
+    return int(digits[:-1]) if len(digits) >= 3 and digits.isdigit() else None
+
+
+def ort_gpu_spec() -> str:
+    # onnxruntime-gpu on PyPI targets CUDA 13 from 1.27 on, CUDA 12 before that
+    major = torch_cuda_major()
+    return "onnxruntime-gpu<1.27" if major is not None and major < 13 else "onnxruntime-gpu>=1.27"
+
+
 def ensure_onnxruntime():
     present = {d: v for d in ORT_DISTS if (v := installed(d))}
     if present:
@@ -70,6 +88,7 @@ def ensure_onnxruntime():
             print(f"{TAG} Warning: several onnxruntime builds are installed ({listing}).")
             print(f"{TAG}   They share one module and can break each other. Visage will not touch them;")
             print(f"{TAG}   if face swap fails, uninstall all of them and install just one.")
+        # a CPU-only build next to an NVIDIA GPU is reported once Forge has started (scripts/visage.py)
         return
 
     if os.environ.get("VISAGE_ORT_PACKAGE"):
@@ -77,7 +96,7 @@ def ensure_onnxruntime():
     elif sys.platform == "darwin":
         package = "onnxruntime"
     elif has_nvidia() and torch_flavour() != "rocm":
-        package = "onnxruntime-gpu"
+        package = f'"{ort_gpu_spec()}"'
     elif os.name == "nt":
         package = "onnxruntime-directml"  # AMD / Intel GPUs on Windows
     else:
@@ -92,7 +111,6 @@ def ensure(dist: str, spec: str | None = None, desc: str | None = None):
 
 try:
     ensure_onnxruntime()
-    ensure("onnx")  # reads the identity projection out of inswapper-style models
     ensure("safetensors")  # opencv, numpy and Pillow always ship with Forge
 except Exception as e:  # never block Forge from starting
     print(f"{TAG} dependency check failed: {e}")

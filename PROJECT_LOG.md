@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-10-18 — 0.4.0, NVIDIA GPU, emap reader, beard refine, new README examples
+
+- Tested on a second machine: Forge Neo 2.30, Python 3.13.13, torch 2.13.0+cu130, RTX 2070 8 GB.
+  Its venv had the CPU-only `onnxruntime` 1.30 (installed by uv on 2026-10-05, before Visage), so Visage ran on the CPU
+  without saying so. Now `runtime.gpu_hint()` reports it at app start, in the Models tab and in `GET /visage/v1/models`
+  (`gpu_hint`). After `pip uninstall onnxruntime` + `pip install "onnxruntime-gpu>=1.27"` (got 1.31.0): provider
+  CUDAExecutionProvider, a warm swap 0.3–0.7 s against ~2.7 s on CPU, same identity scores.
+- `install.py` pins the GPU build to torch's CUDA: `onnxruntime-gpu>=1.27` for cu13x, `<1.27` for cu12x
+  (PyPI builds are CUDA 13 from 1.27 on). Forge PR #1561 drops `--onnxruntime-gpu`, so users cannot rely on that flag.
+- `runtime._prepare_cuda()` calls `onnxruntime.preload_dlls()` once; inside Forge it logs
+  "Skip loading CUDA and cuDNN DLLs since torch is imported" and reuses torch's DLLs.
+- Bug: `import onnx` failed there (onnx 1.23 vs an older protobuf: no `google.protobuf.runtime_version`), so inswapper
+  and ReSwapper could not run. `lib_visage/onnxread.py` reads the last graph initializer from the protobuf wire format
+  directly; checked equal to `onnx.numpy_helper` on inswapper_128. `onnx` is no longer installed or imported.
+- Refine: new `refine_extend_down` (appended to ARG_KEYS, infotext `Visage refine extend`). It adds an ellipse below the
+  jaw to the inpaint mask. The swap crop ends at the chin, so a full source beard otherwise stops there; with 45,
+  denoise 0.55 and the beard in the refine prompt, the beard covers the jaw (HyperSwap 1C, identity 0.77).
+- Mask variants do not bring the beard over (blur, no model mask). HyperSwap 1C gives a fuller beard than 1A.
+- Strength > 1 barely changes HyperSwap (±0.02 identity, visually the same).
+- README examples redone with MOSS Image + 8-step turbo LoRA, sources that differ strongly from the targets (age, ethnicity),
+  and a close-up row. Previous examples used look-alike faces and showed no visible change.
+- Compared with abzaloff/sd-webui-reactor (real `swap_face`, defaults, CPU, isolated venv in `.local/reactor`, stubbed WebUI
+  modules). Same ArcFace scoring for all: ReActor 0.85–0.88, Visage inswapper boost 2x 0.85–0.88, inswapper + boost +
+  GFPGAN 0.83–0.86, HyperSwap 1A/1C + GFPGAN 0.72–0.80. That fork still imports insightface. Kept HyperSwap as the default
+  (cleaner skin and eyes) and documented inswapper as the likeness option. The comparison is not in the README.
+- Network note: `desktop-casa` sometimes resolves to an IPv6 link-local address that Forge (`--listen`, IPv4) does not
+  answer, and requests hang. Use the IPv4 address.
+
 ## 2026-10-18 — 0.3.0, integrity, PNG info round-trip, X/Y/Z
 
 - SHA-256 pinned for all 38 models (`lib_visage/hashes.py`), taken from the upstream Hugging Face LFS metadata.
@@ -76,8 +104,8 @@ now supports cu130. So Visage installs onnxruntime itself, but only when none is
   Both complete and write `Visage` / `Visage refine` to the infotext. The refine pass changes the face area.
 
 **Not verified yet**
-- GPU execution providers. Tests ran on CPU: the dev machine is AMD and has plain `onnxruntime` installed.
-  `onnxruntime-directml` should accelerate it on Windows.
+- GPU execution providers other than CUDA (checked on 2026-10-18, see 0.4.0). The dev machine is AMD with plain
+  `onnxruntime`; `onnxruntime-directml` should accelerate it on Windows.
 - Swap of the img2img input, batch size > 1, and the Extras-tab path through the UI. The code paths exist but no click-test was done.
 
 **Backlog**

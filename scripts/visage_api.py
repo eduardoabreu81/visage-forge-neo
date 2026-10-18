@@ -91,6 +91,7 @@ def mount(_demo, app: FastAPI):
             "models_dir": models.models_dir(),
             "providers": runtime.available_providers(),
             "active_provider": runtime.active_provider() if runtime.available_providers() else None,
+            "gpu_hint": vf.gpu_hint(),
             "models": [
                 {"key": k, "kind": s.kind, "label": s.title, "license": s.license, "downloaded": models.is_downloaded(k)}
                 for k, s in models.REGISTRY.items()

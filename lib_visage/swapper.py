@@ -7,7 +7,7 @@ import threading
 import cv2
 import numpy as np
 
-from . import models, runtime
+from . import models, onnxread, runtime
 from .geometry import explode_pixel_boost, implode_pixel_boost, warp_face
 
 _emaps: dict[str, np.ndarray] = {}
@@ -18,11 +18,7 @@ def _emap(key: str) -> np.ndarray:
     """The 512x512 identity projection stored as the last initializer of inswapper-style graphs."""
     with _emap_lock:
         if key not in _emaps:
-            import onnx
-            from onnx import numpy_helper
-
-            graph = onnx.load(models.local_path(key), load_external_data=False).graph
-            _emaps[key] = numpy_helper.to_array(graph.initializer[-1]).astype(np.float32)
+            _emaps[key] = onnxread.last_initializer(models.local_path(key)).astype(np.float32)
         return _emaps[key]
 
 
