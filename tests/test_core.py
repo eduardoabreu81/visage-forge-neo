@@ -36,6 +36,18 @@ def _pb_int(num, value):
     return _pb_varint(num << 3) + _pb_varint(value)
 
 
+def test_restore_guard_picks_largest_safe_visibility():
+    # likeness falls 0.1 per unit of visibility: with a 0.02 limit, 0.6 and 0.3 fail and 0.15 passes
+    render = lambda v: np.full((2, 2), v)  # noqa: E731
+    score = lambda img: 0.8 - float(img[0, 0]) * 0.1  # noqa: E731
+    frame, used = pipeline._guarded(render, 0.6, 0.02, 0.8, score)
+    assert used == 0.15 and frame[0, 0] == 0.15
+    frame, used = pipeline._guarded(render, 0.6, 0.1, 0.8, score)
+    assert used == 0.6
+    frame, used = pipeline._guarded(render, 0.6, 0.001, 0.8, score)
+    assert used == 0.0
+
+
 def test_gpu_hint(monkeypatch):
     from lib_visage import runtime
 

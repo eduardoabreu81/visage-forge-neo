@@ -47,6 +47,7 @@ class Options:
     restorer_visibility: float = 1.0
     codeformer_weight: float = 0.5
     face_boost: bool = False  # restore inside the swap crop before pasting back
+    restore_guard: float = 0.0  # max identity drop the restorer may cause; lowers its visibility past that (0 = off)
 
     report_similarity: bool = False  # measure ArcFace similarity of each result face to its source
     sfw: str = "off"  # off | skip | blur - optional SFW filter, see lib_visage/safety.py
@@ -74,6 +75,7 @@ class Result:
     message: str = ""
     similarity: list = field(default_factory=list)  # per swapped face, when Options.report_similarity
     flagged: bool = False  # the SFW filter judged the image NSFW
+    restore_used: list = field(default_factory=list)  # restorer visibility actually applied per face (restore_guard)
 
 
 def identity_from_images(images: list[np.ndarray], opts: Options | None = None, face_index: int = 0,
@@ -143,6 +145,21 @@ def _build_mask(opts: Options, crop: np.ndarray, swapped: np.ndarray, model_mask
     return masks.combine(parts)
 
 
+def _likeness(image: np.ndarray, face: analysis.Face, identity: Identity, progress=None) -> float:
+    probe = analysis.Face(bbox=face.bbox, kps=face.kps, score=face.score)
+    return analysis.cosine_similarity(analysis.embed(image, probe, progress=progress), identity.normed)
+
+
+def _guarded(render, visibility: float, max_drop: float, baseline: float, score) -> tuple[np.ndarray, float]:
+    """Largest restorer visibility (v, v/2, v/4, 0) whose result keeps the likeness within `max_drop` of `baseline`.
+    `render(v)` returns the frame restored at visibility v; `score(frame)` its likeness to the source."""
+    for v in (visibility, visibility / 2, visibility / 4):
+        frame = render(v)
+        if baseline - score(frame) <= max_drop:
+            return frame, v
+    return render(0.0), 0.0
+
+
 def select_targets(frame: np.ndarray, opts: Options, progress=None) -> tuple[list[analysis.Face], list[int]]:
     faces = analysis.detect(frame, opts.detector, opts.det_size, opts.det_threshold, opts.try_rotations, progress)
     if opts.min_face_size:
@@ -175,6 +192,9 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
     out = frame.copy()
     union = np.zeros(frame.shape[:2], dtype=np.float32)
     restore = opts.restorer if opts.restorer and opts.restorer != "none" else None
+    visibility = float(np.clip(opts.restorer_visibility, 0, 1))
+    guard = restore is not None and opts.restore_guard > 0 and visibility > 0
+    restore_used = []
 
     for n, idx in enumerate(indexes):
         face = faces[idx]
@@ -188,18 +208,35 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
         if opts.color_match:
             swapped = _color_match(swapped, crop, mask)
 
+        def score(img, face=face, identity=identity):
+            return _likeness(img, face, identity, progress)
+
         if restore and opts.face_boost:
             fixed = restorer.restore_crop(restore, swapped, opts.codeformer_weight, progress)
-            v = float(np.clip(opts.restorer_visibility, 0, 1))
-            swapped = swapped * (1 - v) + fixed * v
 
-        out = paste_back(out, swapped, mask, matrix)
+            def render(v, before=out, swapped=swapped, fixed=fixed, mask=mask, matrix=matrix):
+                return paste_back(before, swapped * (1 - v) + fixed * v, mask, matrix)
+
+            if guard:
+                out, used = _guarded(render, visibility, opts.restore_guard, score(render(0.0)), score)
+            else:
+                out, used = render(visibility), visibility
+            restore_used.append(used)
+        else:
+            out = paste_back(out, swapped, mask, matrix)
         union = np.maximum(union, warp_mask_to_frame(mask, matrix, frame.shape))
 
         if restore and not opts.face_boost:
             rcrop, restored, rmatrix = restorer.restore_face(restore, out, face.kps, opts.codeformer_weight, progress)
-            rmask = masks.box_mask(rcrop.shape[0], 0.3) * float(np.clip(opts.restorer_visibility, 0, 1))
-            out = paste_back(out, restored, rmask, rmatrix)
+
+            def render(v, before=out, restored=restored, rcrop=rcrop, rmatrix=rmatrix):
+                return paste_back(before, restored, masks.box_mask(rcrop.shape[0], 0.3) * v, rmatrix)
+
+            if guard:
+                out, used = _guarded(render, visibility, opts.restore_guard, score(out), score)
+            else:
+                out, used = render(visibility), visibility
+            restore_used.append(used)
 
     similarity = []
     if opts.report_similarity:
@@ -209,11 +246,14 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
             similarity.append(analysis.cosine_similarity(emb, identities[n % len(identities)].normed))
 
     message = f"swapped {len(indexes)} of {len(faces)} face(s) in {time.time() - t0:.1f}s"
+    if guard and any(u < visibility for u in restore_used):
+        message += (" (likeness guard: restorer visibility lowered to "
+                    + ", ".join(f"{u:g}" for u in restore_used) + ")")
     if flagged:  # sfw == "blur"
         out = safety.blur(out)
         message += " (SFW filter: NSFW, result blurred)"
     return Result(out, faces_found=len(faces), swapped=indexes, face_mask=union, seconds=time.time() - t0,
-                  message=message, similarity=similarity, flagged=flagged)
+                  message=message, similarity=similarity, flagged=flagged, restore_used=restore_used)
 
 
 def restore_only(frame: np.ndarray, opts: Options, progress=None) -> Result:

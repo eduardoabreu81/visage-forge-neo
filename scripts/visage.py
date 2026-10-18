@@ -28,7 +28,7 @@ ARG_KEYS = [
     "mask_occlusion", "occluder", "mask_region", "regions", "region_dilate", "keep_mouth",
     "restorer", "restorer_visibility", "codeformer_weight", "face_boost",
     "refine", "refine_denoise", "refine_steps", "refine_padding", "refine_prompt", "refine_negative",
-    "refine_reswap", "refine_extend_down",
+    "refine_reswap", "refine_extend_down", "restore_guard",
 ]
 
 
@@ -64,6 +64,7 @@ def build_options(s: dict) -> pipeline.Options:
         restorer_visibility=float(s.get("restorer_visibility") if s.get("restorer_visibility") is not None else 1.0),
         codeformer_weight=float(s.get("codeformer_weight") if s.get("codeformer_weight") is not None else 0.5),
         face_boost=bool(s.get("face_boost")),
+        restore_guard=float(s.get("restore_guard") or 0),
         sfw=vf.sfw_mode(),
     )
 
@@ -80,6 +81,8 @@ def infotext_params(opts: pipeline.Options, s: dict) -> dict:
     if opts.restorer and opts.restorer != "none":
         params["Visage restorer"] = opts.restorer
         params["Visage restorer visibility"] = f"{opts.restorer_visibility:g}"
+        if opts.restore_guard > 0:
+            params["Visage likeness guard"] = f"{opts.restore_guard:g}"
     if s.get("refine"):
         params["Visage refine"] = f"{float(s.get('refine_denoise') or 0.15):g}"
         if s.get("refine_extend_down"):
@@ -97,6 +100,7 @@ def paste_fields(c: dict) -> list:
         (c["pixel_boost"], lambda d: d.get("Visage boost", "1x") if "Visage" in d else None),
         (c["restorer"], lambda d: d.get("Visage restorer", "none") if "Visage" in d else None),
         (c["restorer_visibility"], "Visage restorer visibility"),
+        (c["restore_guard"], lambda d: d.get("Visage likeness guard", 0) if "Visage" in d else None),
         (c["refine"], lambda d: "Visage refine" in d if "Visage" in d else None),
         (c["refine_denoise"], "Visage refine"),
         (c["refine_extend_down"], lambda d: d.get("Visage refine extend", 0) if "Visage" in d else None),
@@ -254,6 +258,10 @@ class VisageScript(scripts.Script):
                         c["restorer_visibility"] = gr.Slider(0.0, 1.0, 1.0, step=0.05, label="Visibility", elem_id=eid("restorer_visibility"))
                         c["codeformer_weight"] = gr.Slider(0.0, 1.0, 0.5, step=0.05, label="CodeFormer fidelity", elem_id=eid("codeformer_weight"))
                     c["face_boost"] = gr.Checkbox(False, label="Face boost (restore inside the swap crop before pasting)", elem_id=eid("face_boost"))
+                    c["restore_guard"] = gr.Slider(0.0, 0.1, 0.0, step=0.01, label="Likeness guard (0 = off)",
+                                                   elem_id=eid("restore_guard"),
+                                                   info="if the restorer makes the face less like the source by more than this, "
+                                                        "Visage lowers the restorer visibility for that face; 0.02-0.03 works well")
                     gr.Markdown("Restoration only touches the faces Visage swapped.")
 
                 with gr.Tab("Refine"):
@@ -423,7 +431,22 @@ class VisageScript(scripts.Script):
                     swapped.append(img)
             p.init_images = swapped
 
+    @staticmethod
+    def _swap_early(p) -> bool:
+        """Without an inpaint mask the image is final at postprocess_image, so swap there: other extensions that
+        enhance or upscale in postprocess_image_after_composite (DLSS 5, for one) then see the swapped face.
+        Extensions run in folder-name order, so most of them would otherwise come before Visage."""
+        return getattr(p, "image_mask", None) is None and getattr(p, "paste_to", None) is None
+
+    def postprocess_image(self, p, pp, *args):
+        if self._swap_early(p):
+            self._swap(p, pp)
+
     def postprocess_image_after_composite(self, p, pp, *args):
+        if not self._swap_early(p):
+            self._swap(p, pp)
+
+    def _swap(self, p, pp):
         job = getattr(self, "_job", None)
         if job is None or getattr(p, "_visage_nested", False):
             return

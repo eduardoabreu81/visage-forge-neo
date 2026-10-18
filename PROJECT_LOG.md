@@ -25,6 +25,16 @@
   modules). Same ArcFace scoring for all: ReActor 0.85–0.88, Visage inswapper boost 2x 0.85–0.88, inswapper + boost +
   GFPGAN 0.83–0.86, HyperSwap 1A/1C + GFPGAN 0.72–0.80. That fork still imports insightface. Kept HyperSwap as the default
   (cleaner skin and eyes) and documented inswapper as the likeness option. The comparison is not in the README.
+- Likeness guard (`Options.restore_guard`, ARG_KEYS `restore_guard`, infotext `Visage likeness guard`): after restoring a
+  face, compare its ArcFace likeness with the unrestored swap; past the limit try visibility v, v/2, v/4, then 0.
+  inswapper boost 2x + CodeFormer 1.0 on the 4 README pairs: drop 0.06–0.16 without it, within 0.02 with 0.02
+  (visibility ended at 0.25–0.5). Costs about 0.5 s per face on the GPU.
+- Hook order: Forge runs AlwaysVisible scripts in load order (extension folder name), not by `sorting_priority`, so
+  sd-forge-dlss5 ran its `postprocess_image_after_composite` before Visage and the swapped face skipped DLSS
+  (the `-before-visage` copy was already 1248x1536). Visage now swaps in `postprocess_image` when there is no inpaint
+  mask (`p.image_mask` and `p.paste_to` are None) and keeps `postprocess_image_after_composite` for inpainting.
+  Re-tested: `-before-visage` is 832x1024, the final 1248x1536 has the swapped face, infotext has both extensions.
+- Swappers do not carry bindis, piercings or moles (ArcFace ignores them). Use the refine prompt.
 - Network note: `desktop-casa` sometimes resolves to an IPv6 link-local address that Forge (`--listen`, IPv4) does not
   answer, and requests hang. Use the IPv4 address.
 

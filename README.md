@@ -50,6 +50,8 @@ It is **ONNX only**: no insightface, no extra packages that fight over onnxrunti
 - **Installs the right GPU build**: on a fresh install it picks the onnxruntime-gpu that matches your Forge's CUDA version (12 or 13)
 - **inswapper and ReSwapper no longer fail** with a `protobuf` / `runtime_version` error on some Forge installs
 - **Refine can carry a full beard over**: extend the refine area below the jaw and describe the beard in the refine prompt
+- **Likeness guard**: if a restorer makes the face look less like the source than the limit you set, Visage lowers the restorer strength for that face
+- **Works with DLSS 5 and other image enhancers**: Visage now swaps before extensions that enhance or upscale the finished picture, so they also improve the new face
 
 ### v0.3.0 - Integrity, PNG Info and X/Y/Z
 
@@ -112,6 +114,7 @@ The face swap extensions people used with A1111 depend on `insightface`. Older v
 
 - **Face restorers**: GFPGAN 1.4, CodeFormer (with fidelity), GPEN-BFR 256/512/1024/2048 and RestoreFormer++. They touch only the faces Visage swapped
 - **Face boost**: restore inside the swap crop before pasting it back
+- **Likeness guard**: restorers can make a face look more generic. Set **Likeness guard** to 0.02–0.03 and Visage checks each face after restoring it; if it now looks less like the source than that, Visage lowers the restorer strength for that face. With CodeFormer at full strength, the likeness dropped by up to 0.16 without the guard and stayed within 0.02 with it
 - **Refine with the checkpoint**: a low-denoise inpaint of the new face with the model you are using, so the face takes on the picture's lighting, grain and style. It then swaps again to keep the identity
 - **Beards**: a swap model only redraws the face itself, so a full beard stops at the jaw. In **Refine**, set **Extend the refine area below the jaw** to 30–50, describe the beard in the refine prompt and use a denoise around 0.5
 
@@ -255,6 +258,8 @@ Visage also works in `/sdapi/v1/txt2img` and `/sdapi/v1/img2img` through `always
 - Not sure which face is index `1`? Use **Target → Test on an image → Show face indexes**
 - With turbo / few-step models, keep the refine denoise low (0.10–0.15) and leave **Swap again after refining** on
 - Hair, beards and ears outside the face come from the generated picture, not the source. Describe them in your prompt, or use the refine with an extended area for beards
+- Swap models copy who the person is, not what is on the skin: bindis, piercings, moles, make-up and tattoos do not carry over. Add them to the refine prompt (for example "small red bindi on her forehead") with a denoise around 0.3
+- Using DLSS 5 or another enhancer that works on the finished picture? Turn both on: Visage swaps first, then the enhancer improves the whole picture, new face included (with inpainting masks, Visage still swaps after the composite)
 - Small faces in wide shots gain the most from pixel boost 2x and a restorer
 - **Unload models from memory** in the Models tab frees the memory Visage uses, without restarting Forge
 
