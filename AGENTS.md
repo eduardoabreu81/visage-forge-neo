@@ -53,6 +53,12 @@ tests/test_core.py    unit tests, plus model tests when VISAGE_MODELS_DIR and VI
 - SCRFD / RetinaFace-10G: input (x-127.5)/128 RGB, letterboxed top-left; 9 outputs (scores, boxes, kps per stride 8/16/32, 2 anchors).
 - ArcFace w600k_r50: 112 crop (arcface_112), x/127.5-1, RGB.
 - Restorers: RGB in [-1,1]; CodeFormer has an extra `weight` (double) input.
+- AlphaFace: target RGB in [0,1] at arcface_128/256; source = ArcFace vector (scale-invariant); output in [0,1].
+- GHOST: arcface_112_v1, target in [-1,1], source = crossface_ghost(ArcFace); output in [-1,1]; extra feature-map outputs.
+- SimSwap 256: arcface_112_v1, ImageNet mean/std; 512: [0,1]; source = normalised crossface_simswap(ArcFace); output in [0,1].
+- HiFiFace: mtcnn_512, [-1,1], normalised crossface_hififace(ArcFace); outputs `output` and `mask`.
+- NSFW (optional filter): nsfw_1 640 detector (score = max class > 0.2), nsfw_2 384 (p0-p1 > 0.25),
+  nsfw_3 448 CLIP-norm ((l2+l3)-(l0+l1) > 10.5); NSFW when 2 of 3 agree.
 
 ## Tests
 

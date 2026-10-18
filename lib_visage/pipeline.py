@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field, fields
 import cv2
 import numpy as np
 
-from . import analysis, masks, models, restorer, swapper
+from . import analysis, masks, models, restorer, safety, swapper
 from .facemodel import Identity, average
 from .geometry import paste_back, warp_mask_to_frame
 
@@ -49,6 +49,7 @@ class Options:
     face_boost: bool = False  # restore inside the swap crop before pasting back
 
     report_similarity: bool = False  # measure ArcFace similarity of each result face to its source
+    sfw: str = "off"  # off | skip | blur - optional SFW filter, see lib_visage/safety.py
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "Options":
@@ -72,6 +73,7 @@ class Result:
     seconds: float = 0.0
     message: str = ""
     similarity: list = field(default_factory=list)  # per swapped face, when Options.report_similarity
+    flagged: bool = False  # the SFW filter judged the image NSFW
 
 
 def identity_from_images(images: list[np.ndarray], opts: Options | None = None, face_index: int = 0,
@@ -161,9 +163,13 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
     if opts.swapper not in models.REGISTRY:
         raise ValueError(f"unknown swapper {opts.swapper}")
 
+    flagged = opts.sfw in ("skip", "blur") and safety.is_nsfw(frame, progress)
+    if flagged and opts.sfw == "skip":
+        return Result(frame, seconds=time.time() - t0, flagged=True, message="SFW filter: NSFW image, swap skipped")
+
     faces, indexes = select_targets(frame, opts, progress)
     if not indexes:
-        return Result(frame, faces_found=len(faces), seconds=time.time() - t0,
+        return Result(frame, faces_found=len(faces), seconds=time.time() - t0, flagged=flagged,
                       message=f"no matching target face (found {len(faces)})")
 
     out = frame.copy()
@@ -202,8 +208,12 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
             emb = analysis.embed(out, probe, progress=progress)
             similarity.append(analysis.cosine_similarity(emb, identities[n % len(identities)].normed))
 
+    message = f"swapped {len(indexes)} of {len(faces)} face(s) in {time.time() - t0:.1f}s"
+    if flagged:  # sfw == "blur"
+        out = safety.blur(out)
+        message += " (SFW filter: NSFW, result blurred)"
     return Result(out, faces_found=len(faces), swapped=indexes, face_mask=union, seconds=time.time() - t0,
-                  message=f"swapped {len(indexes)} of {len(faces)} face(s) in {time.time() - t0:.1f}s", similarity=similarity)
+                  message=message, similarity=similarity, flagged=flagged)
 
 
 def restore_only(frame: np.ndarray, opts: Options, progress=None) -> Result:

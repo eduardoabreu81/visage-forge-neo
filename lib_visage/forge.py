@@ -45,6 +45,8 @@ def register_settings():
     add("visage_unload_after", False, "Unload Visage models after every generation", info="frees VRAM at the cost of reload time")
     add("visage_report_similarity", True, "Print how closely each swapped face matches its source (ArcFace)")
     add("visage_save_original", False, "Also save the image before Visage processing (suffix -before-visage)")
+    add("visage_sfw_mode", "off", "Optional SFW filter", gr.Dropdown, {"choices": ["off", "skip", "blur"]},
+        info="off = no check (default) · skip = leave NSFW images untouched · blur = blur NSFW results. Models download only when enabled")
     add("visage_default_swapper", "hyperswap_1a_256", "Default swapper", gr.Dropdown, {"choices": SWAPPERS})
 
 
@@ -52,6 +54,11 @@ def apply_settings():
     models.set_models_dir(models_root())
     models.allow_download = bool(getattr(shared.opts, "visage_auto_download", True))
     runtime.provider_preference = getattr(shared.opts, "visage_provider", "auto") or "auto"
+
+
+def sfw_mode() -> str:
+    mode = getattr(shared.opts, "visage_sfw_mode", "off") if hasattr(shared, "opts") else "off"
+    return mode if mode in ("off", "skip", "blur") else "off"
 
 
 def models_root() -> str:

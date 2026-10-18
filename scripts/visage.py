@@ -64,6 +64,7 @@ def build_options(s: dict) -> pipeline.Options:
         restorer_visibility=float(s.get("restorer_visibility") if s.get("restorer_visibility") is not None else 1.0),
         codeformer_weight=float(s.get("codeformer_weight") if s.get("codeformer_weight") is not None else 0.5),
         face_boost=bool(s.get("face_boost")),
+        sfw=vf.sfw_mode(),
     )
 
 
@@ -75,7 +76,7 @@ def _similarity_note(result) -> str:
 
 def _status_models() -> str:
     rows = []
-    for kind in ("swapper", "detector", "restorer", "occluder", "parser", "recognizer", "classifier"):
+    for kind in ("swapper", "detector", "restorer", "occluder", "parser", "recognizer", "classifier", "converter", "safety"):
         for key in models.keys_of(kind):
             spec = models.REGISTRY[key]
             mark = "✅" if models.is_downloaded(key) else "⬇️"

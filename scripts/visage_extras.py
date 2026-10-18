@@ -66,6 +66,7 @@ class ScriptPostprocessingVisage(scripts_postprocessing.ScriptPostprocessing):
             swapper=swapper, target_indexes=target_indexes, sort_order=sort_order, strength=float(strength),
             pixel_boost=int(str(pixel_boost).rstrip("x")), mask_occlusion=bool(occlusion), color_match=bool(color_match),
             restorer=restorer or "none", restorer_visibility=float(visibility), codeformer_weight=float(codeformer_weight),
+            sfw=vf.sfw_mode(),
         )
         arr = np.array(pp.image.convert("RGB"))
         if mode == "Restore only":

@@ -122,7 +122,10 @@ def test_detect_group(setup_models):
 
 
 @needs_models
-@pytest.mark.parametrize("key,min_sim", [("hyperswap_1a_256", 0.6), ("inswapper_128", 0.7), ("reswapper_256", 0.5)])
+@pytest.mark.parametrize("key,min_sim", [
+    ("hyperswap_1a_256", 0.6), ("inswapper_128", 0.7), ("reswapper_256", 0.5), ("alphaface_256", 0.7),
+    ("ghost_1_256", 0.7), ("simswap_256", 0.55), ("simswap_unofficial_512", 0.5), ("hififace_unofficial_256", 0.5),
+])
 def test_swap_moves_identity(setup_models, key, min_sim):
     if not models.is_downloaded(key):
         pytest.skip(f"{key} not downloaded")
@@ -134,3 +137,30 @@ def test_swap_moves_identity(setup_models, key, min_sim):
     face = analysis.sort_faces(analysis.detect(result.image), "large-small")[0]
     sim = analysis.cosine_similarity(analysis.embed(result.image, face), ident.normed)
     assert sim >= min_sim, f"{key}: identity similarity {sim:.3f}"
+
+
+def test_sfw_skip_and_blur(monkeypatch):
+    from lib_visage import safety
+
+    frame = (np.random.default_rng(3).random((64, 64, 3)) * 255).astype(np.uint8)
+    ident = facemodel.Identity(np.ones(512, np.float32))
+    monkeypatch.setattr(safety, "is_nsfw", lambda f, progress=None: True)
+    r = pipeline.process(frame, [ident], pipeline.Options(sfw="skip"))
+    assert r.flagged and r.swapped == [] and (r.image == frame).all()
+
+    monkeypatch.setattr(pipeline, "select_targets", lambda f, o, progress=None: ([], []))
+    r = pipeline.process(frame, [ident], pipeline.Options(sfw="blur"))
+    assert r.flagged
+
+
+def test_sfw_off_never_loads_models(monkeypatch):
+    from lib_visage import safety
+
+    def boom(*a, **k):
+        raise AssertionError("SFW models must not run when the filter is off")
+
+    monkeypatch.setattr(safety, "is_nsfw", boom)
+    monkeypatch.setattr(pipeline, "select_targets", lambda f, o, progress=None: ([], []))
+    frame = np.zeros((32, 32, 3), np.uint8)
+    r = pipeline.process(frame, [facemodel.Identity(np.ones(512, np.float32))], pipeline.Options())
+    assert not r.flagged

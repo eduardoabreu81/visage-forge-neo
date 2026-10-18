@@ -120,6 +120,8 @@ def mount(_demo, app: FastAPI):
         def run():
             vf.apply_settings()
             opts = _options(req.options)
+            if "sfw" not in req.options:
+                opts.sfw = vf.sfw_mode()
             target = _image(req.target_image, "target_image")
             if req.face_model:
                 idents, notes = vf.resolve_identities("Face model", None, None, req.face_model, "0", opts)
@@ -131,7 +133,7 @@ def mount(_demo, app: FastAPI):
                 raise HTTPException(status_code=422, detail="; ".join(notes) or "no source face")
             r = pipeline.process(target, idents, opts)
             return {"image": vf.to_base64(r.image), "message": r.message, "faces_found": r.faces_found,
-                    "swapped": r.swapped, "notes": notes}
+                    "swapped": r.swapped, "similarity": r.similarity, "flagged": r.flagged, "notes": notes}
 
         return _guard(run)
 

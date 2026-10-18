@@ -1,5 +1,20 @@
 # PROJECT_LOG
 
+## 2026-10-18 — 0.2.0, more swappers and an optional SFW filter
+
+- New swappers: AlphaFace 256 (0.85), GHOST 1/2/3 256 (GHOST 1: 0.82), SimSwap 256 (0.70) and unofficial 512 (0.62),
+  HiFiFace 256 unofficial (0.61, has a mask output). Numbers are identity similarity on the test set at 1x on CPU.
+- CrossFace converters (ArcFace to GHOST / SimSwap / HiFiFace identity space) are a new model kind, `converter`.
+  Verified: the converters and AlphaFace give the same result for a unit-norm input and for a raw (~23 norm) one,
+  so identities stay unit vectors everywhere.
+- Fix: the model-mask output is now picked by name (`mask`). GHOST returns feature maps as extra outputs.
+- New templates: `arcface_112_v1` (SimSwap/GHOST) and `mtcnn_512` (HiFiFace).
+- Optional SFW filter `lib_visage/safety.py`: 3 NSFW models vote and 2 of 3 are needed. Modes: off (default) / skip / blur.
+  Settings → Visage → "Optional SFW filter". API: `options.sfw` overrides the setting per request. With the filter off,
+  no safety model is loaded (there is a test for this). There were no false positives on the 10 ordinary test images.
+  True positives were not tested on purpose (no NSFW test data).
+- Version bumped to 0.2.0.
+
 ## 2026-10-18 — 0.1.1, validation round
 
 - Tested in Forge through the API: batch size 2 (2 images × 2 faces), img2img (swap the generated image), and img2img with swap only on the input.

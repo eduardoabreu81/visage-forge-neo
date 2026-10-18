@@ -5,7 +5,7 @@ Face swap, face restoration and checkpoint refine for
 It only uses ONNX: **no insightface, no C++ build tools, no second Python install.** It runs on
 Python 3.13+, numpy 2 and Pillow 12/13, which is the stack Neo ships with.
 
-> **Status:** early preview (0.1.1). The core pipeline is tested; the Forge UI is new. Please report issues.
+> **Status:** early preview (0.2.0). The core pipeline is tested; the Forge UI is new. Please report issues.
 
 ## Why another face swap extension?
 
@@ -21,7 +21,7 @@ start, which breaks other extensions. Visage avoids both problems:
 
 | | |
 |---|---|
-| **Swap models** | HyperSwap 1A / 1B / 1C (256), inswapper 128 (+fp16), ReSwapper 128 / 256 |
+| **Swap models** | HyperSwap 1A / 1B / 1C, AlphaFace 256, inswapper 128 (+fp16), ReSwapper 128 / 256, GHOST 1 / 2 / 3, SimSwap 256 / 512, HiFiFace 256 |
 | **Pixel boost** | 1x / 2x / 4x sub-pixel tiling, so 128/256 px swappers give sharper faces |
 | **Identity strength** | 0 → keep the target, 1 → source, up to 1.5 → exaggerate the source |
 | **Face selection** | indexes (`0`, `0,2`, `1-3`, `all`), 7 sort orders, gender filter (FairFace), minimum size, rotated faces |
@@ -35,6 +35,7 @@ start, which breaks other extensions. Visage avoids both problems:
 | **Preview & test** | numbered face boxes (with gender/age) for the source and any test image, and "try swap" without generating |
 | **Identity check** | prints the ArcFace similarity of each swapped face to its source (≈0.75 is a solid HyperSwap result) |
 | **Where** | txt2img, img2img (generated image and/or the img2img input), Extras tab (swap or restore only, batch too), REST API |
+| **SFW filter (optional)** | off by default. When on, it skips or blurs images that at least 2 of 3 NSFW models flag. Its models are downloaded only when you enable it |
 | **Runtime** | CUDA, ROCm, MIGraphX, DirectML, CoreML or CPU, picked automatically or pinned in Settings |
 
 ## Install
@@ -46,6 +47,22 @@ start, which breaks other extensions. Visage avoids both problems:
      Set `VISAGE_ORT_PACKAGE` to pick another package.
 3. Open the **Visage** accordion in txt2img or img2img. Models download the first time they are used
    (HyperSwap is about 384 MB, the detector and recognizer about 180 MB).
+
+### Which swap model?
+
+Identity similarity to the source on the test set (CPU, 1x, higher = closer to the source face):
+
+| Model | Similarity | Notes |
+|---|---|---|
+| inswapper 128 | 0.87 | strongest identity, softer detail (use pixel boost 2x) |
+| AlphaFace 256 | 0.85 | newest, sharp |
+| GHOST 1 256 | 0.82 | Apache-2.0 |
+| HyperSwap 1A 256 | 0.75 | very natural, keeps expression and lighting, has its own mask |
+| SimSwap 256 / 512 | 0.70 / 0.62 | |
+| ReSwapper 256 | 0.63 | keeps more of the target |
+| HiFiFace 256 | 0.61 | keeps face shape |
+
+A higher number is not always better looking. HyperSwap often gives the most believable result.
 
 To use a custom folder, pass `--visage-models-dir D:\models\visage` or set it in **Settings → Visage**.
 
