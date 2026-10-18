@@ -13,7 +13,7 @@
 </div>
 
 Swap, restore and refine faces inside Forge Neo. Visage works in txt2img, img2img and the Extras tab, using the Generate button you already know.
-It is **ONNX only**: there is no insightface, no C++ build tools and no second Python to install, so it runs on the Python 3.13 that Forge Neo ships with.
+It is **ONNX only**: no insightface, no extra packages that fight over onnxruntime, and no second Python to install. It runs on the Python 3.13 that Forge Neo ships with.
 
 <p align="center"><img src=".github/images/swap-fisherman.jpg" alt="Source: an older man with a white beard. Generated: a younger fisherman in a yellow raincoat. With Visage: the fisherman with the older man's face, plus a close-up of the face before and after" width="760"></p>
 
@@ -76,9 +76,9 @@ It is **ONNX only**: there is no insightface, no C++ build tools and no second P
 
 ## 💡 Why Visage
 
-The face swap extensions people used with A1111 pin `insightface==0.7.3`, which has a prebuilt wheel only for Python 3.10. Some of them also replace `onnxruntime-gpu` with the CPU build on every start, which breaks other extensions. Visage was written from scratch to avoid both:
+The face swap extensions people used with A1111 depend on `insightface`. Older versions needed C++ build tools. The current one installs easily, but it requires the CPU-only `onnxruntime` and the `onnx` package. On an NVIDIA machine that puts a second onnxruntime next to `onnxruntime-gpu`, and `onnx` fails on some Forge installs because of its `protobuf` version. Some extensions also replace `onnxruntime-gpu` with the CPU build on every start. Visage was written from scratch to avoid all of this:
 
-- the whole pipeline is plain `onnxruntime` + `numpy` + `opencv`, with no compiler and no insightface
+- the whole pipeline is plain `onnxruntime` + `numpy` + `opencv`, with no insightface and no `onnx` package
 - the installer adds an onnxruntime build **only when none is installed**, and never uninstalls or replaces one
 - models download the first time you use them, from their upstream hosts, into `models/visage`
 
