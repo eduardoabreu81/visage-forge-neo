@@ -43,6 +43,7 @@ def register_settings():
     add("visage_provider", "auto", "ONNX execution provider", gr.Dropdown,
         {"choices": list(runtime.PROVIDER_CHOICES)}, info="auto picks CUDA > ROCm > MIGraphX > DirectML > CoreML > CPU")
     add("visage_unload_after", False, "Unload Visage models after every generation", info="frees VRAM at the cost of reload time")
+    add("visage_report_similarity", True, "Print how closely each swapped face matches its source (ArcFace)")
     add("visage_save_original", False, "Also save the image before Visage processing (suffix -before-visage)")
     add("visage_default_swapper", "hyperswap_1a_256", "Default swapper", gr.Dropdown, {"choices": SWAPPERS})
 

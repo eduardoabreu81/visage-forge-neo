@@ -48,6 +48,8 @@ class Options:
     codeformer_weight: float = 0.5
     face_boost: bool = False  # restore inside the swap crop before pasting back
 
+    report_similarity: bool = False  # measure ArcFace similarity of each result face to its source
+
     @classmethod
     def from_dict(cls, data: dict | None) -> "Options":
         data = data or {}
@@ -69,6 +71,7 @@ class Result:
     face_mask: np.ndarray | None = None  # full frame union of what was replaced (0..1)
     seconds: float = 0.0
     message: str = ""
+    similarity: list = field(default_factory=list)  # per swapped face, when Options.report_similarity
 
 
 def identity_from_images(images: list[np.ndarray], opts: Options | None = None, face_index: int = 0,
@@ -192,8 +195,15 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
             rmask = masks.box_mask(rcrop.shape[0], 0.3) * float(np.clip(opts.restorer_visibility, 0, 1))
             out = paste_back(out, restored, rmask, rmatrix)
 
+    similarity = []
+    if opts.report_similarity:
+        for n, idx in enumerate(indexes):
+            probe = analysis.Face(bbox=faces[idx].bbox, kps=faces[idx].kps, score=faces[idx].score)
+            emb = analysis.embed(out, probe, progress=progress)
+            similarity.append(analysis.cosine_similarity(emb, identities[n % len(identities)].normed))
+
     return Result(out, faces_found=len(faces), swapped=indexes, face_mask=union, seconds=time.time() - t0,
-                  message=f"swapped {len(indexes)} of {len(faces)} face(s) in {time.time() - t0:.1f}s")
+                  message=f"swapped {len(indexes)} of {len(faces)} face(s) in {time.time() - t0:.1f}s", similarity=similarity)
 
 
 def restore_only(frame: np.ndarray, opts: Options, progress=None) -> Result:

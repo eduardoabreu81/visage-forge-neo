@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-10-18 — 0.1.1, validation round
+
+- Tested in Forge through the API: batch size 2 (2 images × 2 faces), img2img (swap the generated image), and img2img with swap only on the input.
+  The last one works, but at 0.3 denoise the turbo model redraws the faces, so the input swap mostly disappears. That is expected.
+- **Bug found:** with turbo models, a refine at 0.25 denoise wipes out the identity (similarity 0.75 → 0.15; at 0.10 it stays 0.74).
+  **Fix:** "Swap again after refining" (new arg `refine_reswap`, on by default) brings it back to 0.74 / 0.76 while keeping
+  the refined lighting. The default refine denoise is now 0.15.
+- New: per-face ArcFace similarity in the console (`visage_report_similarity`) and in `Result.similarity`.
+- New: Source → "Show detected source faces" and Target → "Test on an image" (face indexes, "try swap"), using `lib_visage/preview.py`.
+- New: `localizations/pt_BR.json`.
+- Note: Forge replaces `print` with a tqdm logging handler, so lines printed right after a nested process_images can
+  be missing from a redirected console log. The code still runs; this was verified with a file probe.
+
 ## 2026-10-18 — 0.1.0, first build
 
 **Context.** A community request (tusharbhutt, on GitHub) asked for a ReActor that works with Forge Neo.

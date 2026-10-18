@@ -5,7 +5,7 @@ Face swap, face restoration and checkpoint refine for
 It only uses ONNX: **no insightface, no C++ build tools, no second Python install.** It runs on
 Python 3.13+, numpy 2 and Pillow 12/13, which is the stack Neo ships with.
 
-> **Status:** early preview (0.1.0). The core pipeline is tested; the Forge UI is new. Please report issues.
+> **Status:** early preview (0.1.1). The core pipeline is tested; the Forge UI is new. Please report issues.
 
 ## Why another face swap extension?
 
@@ -31,7 +31,10 @@ start, which breaks other extensions. Visage avoids both problems:
 | **Masks** | feathered box with padding, HyperSwap's own mask, XSeg occlusion (hands, hair, objects), BiSeNet face-parsing regions, "keep target mouth" |
 | **Colour** | optional LAB skin-tone match to the target |
 | **Restore** | GFPGAN 1.4, CodeFormer (fidelity), GPEN-BFR 256/512/1024/2048, RestoreFormer++. Only swapped faces are touched. Face boost restores inside the swap crop |
-| **Refine (Forge only)** | low-denoise inpaint of the swapped face with the loaded checkpoint, so the face picks up the image's lighting, grain and style |
+| **Refine (Forge only)** | low-denoise inpaint of the swapped face with the loaded checkpoint, so the face picks up the image's lighting, grain and style; then an optional second swap restores the identity the inpaint may have drifted from |
+| **Preview & test** | numbered face boxes (with gender/age) for the source and any test image, and "try swap" without generating |
+| **Identity check** | prints the ArcFace similarity of each swapped face to its source (≈0.75 is a solid HyperSwap result) |
+| **Languages** | English, Português (Brasil) |
 | **Where** | txt2img, img2img (generated image and/or the img2img input), Extras tab (swap or restore only, batch too), REST API |
 | **Runtime** | CUDA, ROCm, MIGraphX, DirectML, CoreML or CPU, picked automatically or pinned in Settings |
 
@@ -52,7 +55,9 @@ To use a custom folder, pass `--visage-models-dir D:\models\visage` or set it in
 1. Enable **Visage**, then drop a face photo into **Source**.
 2. Generate. The largest face (index `0`) is swapped with HyperSwap 1A.
 3. For a sharper result, set **Swap → Pixel boost** to `2x` and **Restore** to GFPGAN at about 0.7 visibility.
-4. If the face looks pasted on, enable **Refine** (denoise 0.2–0.3).
+4. If the face looks pasted on, enable **Refine**. Use a denoise of 0.1–0.15 on turbo / few-step models
+   and 0.2–0.3 on regular ones. Keep "Swap again after refining" on.
+5. Not sure which face is index `1`? Open **Target → Test on an image** and click **Show face indexes**.
 
 To keep an identity: **Face models → Save source as face model**, then choose **Source → Face model**.
 

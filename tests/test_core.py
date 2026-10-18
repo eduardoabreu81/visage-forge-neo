@@ -99,6 +99,23 @@ def setup_models():
 
 
 @needs_models
+def test_preview_annotates(setup_models):
+    from lib_visage import preview
+
+    img = _load("group.jpg")
+    out, md = preview.annotate(img, highlight=[0])
+    assert out.shape == img.shape and not (out == img).all()
+    assert "face(s)" in md and "`0`" in md
+
+
+@needs_models
+def test_similarity_report(setup_models):
+    ident, _ = pipeline.identity_from_images([_load("source.png")])
+    r = pipeline.process(_load("group.jpg"), [ident], pipeline.Options(report_similarity=True))
+    assert len(r.similarity) == 1 and r.similarity[0] > 0.6
+
+
+@needs_models
 def test_detect_group(setup_models):
     faces = analysis.detect(_load("group.jpg"))
     assert len(faces) >= 2

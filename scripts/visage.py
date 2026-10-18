@@ -15,7 +15,7 @@ from PIL import Image
 from modules import images, script_callbacks, scripts, shared
 from modules.ui_components import InputAccordion
 
-from lib_visage import __version__, analysis, facemodel, masks, models, pipeline, runtime
+from lib_visage import __version__, analysis, facemodel, masks, models, pipeline, preview, runtime
 from lib_visage import forge as vf
 
 # Order of the values returned by ui(); process hooks receive them positionally.
@@ -28,6 +28,7 @@ ARG_KEYS = [
     "mask_occlusion", "occluder", "mask_region", "regions", "region_dilate", "keep_mouth",
     "restorer", "restorer_visibility", "codeformer_weight", "face_boost",
     "refine", "refine_denoise", "refine_steps", "refine_padding", "refine_prompt", "refine_negative",
+    "refine_reswap",
 ]
 
 
@@ -64,6 +65,12 @@ def build_options(s: dict) -> pipeline.Options:
         codeformer_weight=float(s.get("codeformer_weight") if s.get("codeformer_weight") is not None else 0.5),
         face_boost=bool(s.get("face_boost")),
     )
+
+
+def _similarity_note(result) -> str:
+    if not result.similarity:
+        return ""
+    return " · identity match " + ", ".join(f"{v:.2f}" for v in result.similarity)
 
 
 def _status_models() -> str:
@@ -120,6 +127,11 @@ class VisageScript(scripts.Script):
                         refresh = gr.Button("🔄", visible=False, scale=0, min_width=40)
                     c["source_indexes"] = gr.Textbox("0", label="Source face index(es)", elem_id=eid("source_indexes"),
                                                      info="which face of the source image; '0,1' maps source faces to target faces in order")
+                    with gr.Accordion("🔍 Show detected source faces", open=False):
+                        src_prev_btn = gr.Button("Detect faces in the source image")
+                        with gr.Row():
+                            src_prev_img = gr.Image(label="Source faces", interactive=False, height=260)
+                            src_prev_md = gr.Markdown("")
 
                     def _toggle(kind):
                         return (gr.update(visible=kind == "Image"), gr.update(visible=kind == "Multiple images"),
@@ -144,6 +156,15 @@ class VisageScript(scripts.Script):
                         with gr.Row():
                             c["try_rotations"] = gr.Checkbox(False, label="Detect rotated / lying faces", elem_id=eid("try_rotations"))
                             c["min_face_size"] = gr.Slider(0, 256, 0, step=8, label="Ignore faces smaller than (px)", elem_id=eid("min_face_size"))
+                    with gr.Accordion("🧪 Test on an image", open=False):
+                        gr.Markdown("Check which index each face gets, or try the current settings without generating.")
+                        test_img = gr.Image(label="Test image", type="numpy", image_mode="RGB", height=260)
+                        with gr.Row():
+                            test_prev_btn = gr.Button("Show face indexes")
+                            test_swap_btn = gr.Button("Try swap with current settings", variant="primary")
+                        with gr.Row():
+                            test_out = gr.Image(label="Result", interactive=False, height=320)
+                            test_md = gr.Markdown("")
 
                 with gr.Tab("Swap"):
                     with gr.Row():
@@ -187,11 +208,14 @@ class VisageScript(scripts.Script):
                                 "so the new face takes on the image's lighting and style. Costs one extra small img2img per face set.")
                     with gr.Row():
                         c["refine"] = gr.Checkbox(False, label="Refine with checkpoint", elem_id=eid("refine"))
-                        c["refine_denoise"] = gr.Slider(0.05, 0.6, 0.25, step=0.01, label="Denoise", elem_id=eid("refine_denoise"))
+                        c["refine_denoise"] = gr.Slider(0.02, 0.6, 0.15, step=0.01, label="Denoise", elem_id=eid("refine_denoise"),
+                                                        info="turbo / few-step models need less (0.05-0.15)")
                         c["refine_steps"] = gr.Slider(0, 60, 0, step=1, label="Steps (0 = same as generation)", elem_id=eid("refine_steps"))
                         c["refine_padding"] = gr.Slider(0, 256, 48, step=8, label="Context padding (px)", elem_id=eid("refine_padding"))
                     c["refine_prompt"] = gr.Textbox("", label="Refine prompt (empty = generation prompt)", lines=2, elem_id=eid("refine_prompt"))
                     c["refine_negative"] = gr.Textbox("", label="Refine negative prompt (empty = generation negative)", lines=1, elem_id=eid("refine_negative"))
+                    c["refine_reswap"] = gr.Checkbox(True, label="Swap again after refining (keeps the identity, keeps the new lighting)",
+                                                     elem_id=eid("refine_reswap"))
 
                 with gr.Tab("Face models"):
                     gr.Markdown("Save the current source as a reusable face model, or blend saved models into a new one.")
@@ -239,6 +263,57 @@ class VisageScript(scripts.Script):
                         gr.Button("🔄 Refresh").click(lambda: _status_models(), None, status, show_progress=False)
                         gr.Button("🧹 Unload models from memory").click(lambda: f"Unloaded {runtime.unload()} session(s).\n\n" + _status_models(), None, status)
 
+        inputs = [c[k] for k in ARG_KEYS if k in c]
+
+        def _src_preview(*vals):
+            st = dict(zip([k for k in ARG_KEYS if k in c], vals))
+            img = vf.to_rgb(st.get("source_image"))
+            if img is None:
+                return None, "⚠️ add a source image first"
+            try:
+                vf.apply_settings()
+                wanted = analysis.parse_indexes(st.get("source_indexes"))
+                return preview.annotate(img, build_options(st), highlight=wanted or [0])
+            except Exception as e:
+                return None, f"❌ {e}"
+
+        def _test_preview(img, *vals):
+            st = dict(zip([k for k in ARG_KEYS if k in c], vals))
+            img = vf.to_rgb(img)
+            if img is None:
+                return None, "⚠️ add a test image first"
+            try:
+                vf.apply_settings()
+                opts = build_options(st)
+                faces, chosen = pipeline.select_targets(img, opts)
+                annotated, summary = preview.annotate(img, opts, classify=opts.gender != "any", highlight=None)
+                return annotated, summary + f"\n\nWith the current settings Visage would swap: `{chosen}`"
+            except Exception as e:
+                return None, f"❌ {e}"
+
+        def _test_swap(img, *vals):
+            st = dict(zip([k for k in ARG_KEYS if k in c], vals))
+            img = vf.to_rgb(img)
+            if img is None:
+                return None, "⚠️ add a test image first"
+            try:
+                vf.apply_settings()
+                opts = build_options(st)
+                opts.report_similarity = True
+                idents, notes = vf.resolve_identities(st.get("source_type") or "Image", st.get("source_image"), st.get("source_files"),
+                                                      st.get("face_model"), st.get("source_indexes"), opts)
+                if not idents:
+                    return None, "⚠️ " + ("; ".join(notes) or "no source identity")
+                r = pipeline.process(img, idents, opts)
+                return r.image, f"{r.message}{_similarity_note(r)}" + ("\n\n" + "; ".join(notes) if notes else "")
+            except Exception as e:
+                traceback.print_exc()
+                return None, f"❌ {e}"
+
+        src_prev_btn.click(_src_preview, inputs, [src_prev_img, src_prev_md])
+        test_prev_btn.click(_test_preview, [test_img] + inputs, [test_out, test_md])
+        test_swap_btn.click(_test_swap, [test_img] + inputs, [test_out, test_md])
+
         missing = [k for k in ARG_KEYS if k not in c]
         assert not missing, f"Visage UI is missing components: {missing}"
         return [c[k] for k in ARG_KEYS]
@@ -262,6 +337,7 @@ class VisageScript(scripts.Script):
             return
         try:
             opts, idents = self._prepare(p, s)
+            opts.report_similarity = bool(getattr(shared.opts, "visage_report_similarity", True))
         except Exception as e:
             print(f"[Visage] disabled for this job: {e}")
             traceback.print_exc()
@@ -300,7 +376,7 @@ class VisageScript(scripts.Script):
             original = pp.image
             arr = np.array(original.convert("RGB"))
             result = pipeline.process(arr, idents, opts)
-            print(f"[Visage] {result.message}")
+            print(f"[Visage] {result.message}{_similarity_note(result)}")
             if not result.swapped:
                 return
             if getattr(shared.opts, "visage_save_original", False) and p.save_samples():
@@ -312,9 +388,14 @@ class VisageScript(scripts.Script):
             out = Image.fromarray(result.image)
             if s.get("refine") and result.face_mask is not None:
                 try:
-                    out = vf.refine(p, out, result.face_mask, s.get("refine_denoise") or 0.25, int(s.get("refine_steps") or 0),
+                    out = vf.refine(p, out, result.face_mask, s.get("refine_denoise") or 0.15, int(s.get("refine_steps") or 0),
                                     int(s.get("refine_padding") or 48), s.get("refine_prompt") or "", s.get("refine_negative") or "",
                                     pp.index)
+                    if s.get("refine_reswap", True):
+                        again = pipeline.process(np.array(out.convert("RGB")), idents, opts)
+                        print(f"[Visage] after refine: {again.message}{_similarity_note(again)}")
+                        if again.swapped:
+                            out = Image.fromarray(again.image)
                 except Exception as e:
                     print(f"[Visage] refine failed, keeping the plain swap: {e}")
                     traceback.print_exc()
