@@ -88,7 +88,7 @@ The face swap extensions people used with A1111 pin `insightface==0.7.3`, which 
 
 ### 🔄 Face Swap
 
-<p align="center"><img src=".github/images/swap-astronaut.jpg" alt="Source: a woman with a black bob and bangs. Generated: a red-haired, freckled astronaut. With Visage: the astronaut with the source face, plus a close-up before and after" width="760"></p>
+<p align="center"><img src=".github/images/swap-astronaut-v2.jpg" alt="Source: a woman with a black bob and bangs. Generated: a red-haired, freckled astronaut. With Visage: the astronaut with the source face, plus a close-up before and after" width="760"></p>
 
 - **14 swap models**: HyperSwap 1A/1B/1C, AlphaFace, inswapper (+fp16), ReSwapper 128/256, GHOST 1/2/3, SimSwap 256/512 and HiFiFace
 - **Pixel boost** 1x / 2x / 4x: the swapper runs on sub-pixel tiles, so 128 and 256 px models give a sharper face
@@ -98,7 +98,7 @@ The face swap extensions people used with A1111 pin `insightface==0.7.3`, which 
 
 ### 🎚️ Masks and Colour
 
-<p align="center"><img src=".github/images/swap-jazz.jpg" alt="Source: a colour portrait of a woman. Generated: a black and white 1950s jazz singer. With Visage: the singer with the source face, still in black and white" width="760"></p>
+<p align="center"><img src=".github/images/swap-jazz-v2.jpg" alt="Source: a colour portrait of a woman. Generated: a black and white 1950s jazz singer. With Visage: the singer with the source face, still in black and white" width="760"></p>
 
 - **Feathered box** with padding, plus **HyperSwap's own mask**
 - **Occlusion** with XSeg, so hands, hair, microphones and glasses stay in front of the face
@@ -117,7 +117,7 @@ The face swap extensions people used with A1111 pin `insightface==0.7.3`, which 
 
 ### 👥 Choose Your Faces
 
-<p align="center"><img src=".github/images/face-indexes.jpg" alt="Four friends on a sofa with numbered boxes on their faces, the same picture with only face number 2 swapped, and a close-up of face 2 before and after" width="900"></p>
+<p align="center"><img src=".github/images/face-indexes-v2.jpg" alt="Four friends on a sofa with numbered boxes on their faces, the same picture with only face number 2 swapped, and a close-up of face 2 before and after" width="900"></p>
 
 - **Target faces** by index (`0`, `0,2`, `1-3` or `all`), in 7 sort orders
 - **Show face indexes** on any test picture, or on the source, before you generate
@@ -210,7 +210,7 @@ Use `"onnxruntime-gpu<1.27"` instead if your Forge runs on CUDA 12 (the startup 
 
 ## 🧩 Swap Models
 
-<p align="center"><img src=".github/images/swap-models.jpg" alt="Close-ups of the source, the generated fisherman, and the fisherman swapped with six models, each labelled with its identity score" width="900"></p>
+<p align="center"><img src=".github/images/swap-models-v2.jpg" alt="Close-ups of the source, the generated fisherman, and the fisherman swapped with six models, each labelled with its identity score" width="900"></p>
 
 *Same source and picture, six models, no restorer. Identity is how close the face is to the source (higher is closer). A higher number is not always the more believable picture: look at the skin and the edges too.*
 
