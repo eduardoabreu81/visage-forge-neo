@@ -32,7 +32,7 @@
 - Hook order: Forge runs AlwaysVisible scripts in load order (extension folder name), not by `sorting_priority`, so
   sd-forge-dlss5 ran its `postprocess_image_after_composite` before Visage and the swapped face skipped DLSS
   (the `-before-visage` copy was already 1248x1536). Visage now swaps in `postprocess_image` when there is no inpaint
-  mask (`p.image_mask` and `p.paste_to` are None) and keeps `postprocess_image_after_composite` for inpainting.
+  mask (`p.image_mask` and `p.paste_to` are None) and an enabled extension that overrides that hook loads before it (checked per job, first script arg False = off); otherwise, and for inpainting, it keeps `postprocess_image_after_composite`.
   Re-tested: `-before-visage` is 832x1024, the final 1248x1536 has the swapped face, infotext has both extensions.
 - Swappers do not carry bindis, piercings or moles (ArcFace ignores them). Use the refine prompt.
 - Network note: `desktop-casa` sometimes resolves to an IPv6 link-local address that Forge (`--listen`, IPv4) does not

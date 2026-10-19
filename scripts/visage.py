@@ -403,6 +403,7 @@ class VisageScript(scripts.Script):
         s = _settings(args)
         s.update(getattr(p, "_visage_xyz", None) or {})  # X/Y/Z plot axes (scripts/visage_xyz.py)
         self._job = None
+        self._early = False
         if not s.get("enabled"):
             return
         try:
@@ -417,6 +418,13 @@ class VisageScript(scripts.Script):
             return
         self._job = (opts, idents, s)
         p.extra_generation_params.update(infotext_params(opts, s))
+        self._early = False
+        try:
+            self._early = self._swap_early(p)
+            if self._early:
+                print(f"[Visage] swapping before {', '.join(self._enhancers_before(p))}, so it also improves the new face")
+        except Exception as e:  # never let the ordering check break a generation
+            print(f"[Visage] could not check other extensions: {e}")
 
         if s.get("swap_init") and getattr(p, "init_images", None):
             swapped = []
@@ -431,19 +439,36 @@ class VisageScript(scripts.Script):
                     swapped.append(img)
             p.init_images = swapped
 
-    @staticmethod
-    def _swap_early(p) -> bool:
-        """Without an inpaint mask the image is final at postprocess_image, so swap there: other extensions that
-        enhance or upscale in postprocess_image_after_composite (DLSS 5, for one) then see the swapped face.
-        Extensions run in folder-name order, so most of them would otherwise come before Visage."""
-        return getattr(p, "image_mask", None) is None and getattr(p, "paste_to", None) is None
+    def _enhancers_before(self, p) -> list[str]:
+        """Enabled extensions that change the finished picture in postprocess_image_after_composite and run before
+        Visage (Forge runs them in folder-name order). DLSS 5 is one: without care it enhances the image first and
+        the swapped face is pasted onto it afterwards, untouched."""
+        runner = getattr(p, "scripts", None)
+        found = []
+        for script in getattr(runner, "alwayson_scripts", None) or []:
+            if script is self:
+                break
+            if type(script).postprocess_image_after_composite is scripts.Script.postprocess_image_after_composite:
+                continue
+            args = (getattr(p, "script_args", None) or [])[script.args_from:script.args_to]
+            if args and args[0] is False:  # the usual enable checkbox / InputAccordion is off
+                continue
+            found.append(script.title())
+        return found
+
+    def _swap_early(self, p) -> bool:
+        """Swap in postprocess_image, before those extensions, when the picture is already final there
+        (no inpaint mask to composite). Otherwise keep the usual postprocess_image_after_composite."""
+        if getattr(p, "image_mask", None) is not None or getattr(p, "paste_to", None) is not None:
+            return False
+        return bool(self._enhancers_before(p))
 
     def postprocess_image(self, p, pp, *args):
-        if self._swap_early(p):
+        if getattr(self, "_early", False):
             self._swap(p, pp)
 
     def postprocess_image_after_composite(self, p, pp, *args):
-        if not self._swap_early(p):
+        if not getattr(self, "_early", False):
             self._swap(p, pp)
 
     def _swap(self, p, pp):
@@ -492,6 +517,7 @@ class VisageScript(scripts.Script):
         if getattr(p, "_visage_nested", False):
             return
         self._job = None
+        self._early = False
         if getattr(shared.opts, "visage_unload_after", False):
             runtime.unload()
 
