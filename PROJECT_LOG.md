@@ -1,5 +1,29 @@
 # PROJECT_LOG
 
+## 2026-10-31 — 0.5.0, CPU by default, GPU in its own process
+
+- Clean reinstall of the RTX 2070 Forge (Neo 2.31, torch 2.14.0+cu130): 0.4.0's `install.py` put `onnxruntime-gpu`
+  1.31.1 into the venv at 18:06:18; 12 s later Forge's built-in ControlNet preprocessors installed insightface 2.1,
+  which requires the CPU `onnxruntime`, and uv laid it over the same `onnxruntime/` package. CUDA was gone, both
+  dist-infos stayed. This happens on every fresh NVIDIA install, so the 0.4.0 hint (two pip commands) was not a fix.
+- Decision (Eduardo): Visage adapts to Forge and never touches the venv. Rejected: re-laying the GPU files with
+  `--force-reinstall --no-deps` (still edits Forge's packages).
+- Settings → Visage → Device (`visage_device`, CPU default / GPU) replaces `visage_provider`. CPU = venv onnxruntime in
+  process (or `runtime/cpu` appended to `sys.path` when the venv has none). GPU = the venv's onnxruntime if it already
+  has a GPU provider, else `runtime/gpu` (`pip install --no-deps --target`, chosen by `ortenv.gpu_package`) in
+  `ortworker.py`, started with `python -I`, connected over a `multiprocessing.connection` pipe; `RemoteSession`
+  mimics `run` / `get_inputs` / `get_outputs`. A separate process because only one `onnxruntime` module can exist
+  per interpreter, and which one wins would depend on import order.
+- The worker finds CUDA / cuDNN in `torch/lib` and `nvidia/*/{bin,lib}` without importing torch (PATH +
+  `add_dll_directory`; LD_LIBRARY_PATH on Linux). Unload-all and switching to CPU end the worker.
+- onnxruntime errors on a pt-BR Windows carry cp1252 text; pybind11 raises UnicodeDecodeError, so the worker decodes
+  the bytes itself.
+- Checked on the dev AMD machine (RX 7600M XT, onnxruntime-directml 1.24.4 in the worker, venv onnxruntime 1.26 CPU):
+  retinaface / scrfd / yoloface / arcface match the CPU within 2e-4 and run 3–17x faster; unload ends the worker.
+  Tests: 18 passed, 11 skipped, including a worker-vs-in-process comparison on arcface.
+- **Not verified yet**: the CUDA worker on the RTX 2070 (VRAM cost of the extra context, swap time). Extensions on
+  that machine are only updated through GitHub, never edited in place.
+
 ## 2026-10-18 — 0.4.0, NVIDIA GPU, emap reader, beard refine, new README examples
 
 - Tested on a second machine: Forge Neo 2.30, Python 3.13.13, torch 2.13.0+cu130, RTX 2070 8 GB.

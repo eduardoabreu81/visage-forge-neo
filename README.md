@@ -43,6 +43,13 @@ It is **ONNX only**: no insightface, no extra packages that fight over onnxrunti
 
 ## 🆕 What's New
 
+### v0.5.0 - CPU by Default, GPU When You Want It
+
+- **Visage no longer installs anything into Forge's Python environment**: it uses whatever onnxruntime Forge already has, so it cannot clash with other extensions
+- **Runs on the CPU by default**: it works on every machine and leaves all the VRAM to your checkpoint
+- **GPU is one click away**: set **Settings → Visage → Device** to **GPU**. Visage downloads the right onnxruntime for your card into its own folder and runs it next to Forge, without touching Forge's packages
+- **Unload models** and switching back to the CPU free all the VRAM Visage used
+
 ### v0.4.0 - NVIDIA GPU and Full Beards
 
 - **Runs on NVIDIA GPUs**: tested on an RTX 2070, about 5 times faster than on the CPU
@@ -81,7 +88,7 @@ It is **ONNX only**: no insightface, no extra packages that fight over onnxrunti
 The face swap extensions people used with A1111 depend on `insightface`. Older versions needed C++ build tools. The current one installs easily, but it requires the CPU-only `onnxruntime` and the `onnx` package. On an NVIDIA machine that puts a second onnxruntime next to `onnxruntime-gpu`, and `onnx` fails on some Forge installs because of its `protobuf` version. Some extensions also replace `onnxruntime-gpu` with the CPU build on every start. Visage was written from scratch to avoid all of this:
 
 - the whole pipeline is plain `onnxruntime` + `numpy` + `opencv`, with no insightface and no `onnx` package
-- the installer adds an onnxruntime build **only when none is installed**, and never uninstalls or replaces one
+- Visage **never installs, removes or replaces anything in Forge's Python environment**; when it needs an onnxruntime that Forge does not have, it keeps it in its own folder
 - models download the first time you use them, from their upstream hosts, into `models/visage`
 
 ---
@@ -148,9 +155,9 @@ The face swap extensions people used with A1111 depend on `insightface`. Older v
 ### 🛡️ Safe by Design
 
 - Changes no Forge Neo file; remove the extension and everything is as it was
-- Never replaces an onnxruntime build that is already installed
+- Never installs, removes or replaces packages in Forge's Python environment
 - Every model has a pinned SHA-256; a download that does not match is discarded
-- Works with CUDA, ROCm, MIGraphX, DirectML, CoreML or CPU, picked automatically or set in **Settings → Visage**
+- Runs on the CPU, or on the GPU when you choose it: NVIDIA (CUDA), AMD and Intel on Windows (DirectML), and Apple (CoreML)
 - **Optional SFW filter**, off by default. With it off, no safety model is downloaded or loaded
 
 ---
@@ -174,26 +181,24 @@ The number under each picture is how close the face is to the source (1.0 would 
 2. Go to **Extensions** → **Install from URL**
 3. Paste: `https://github.com/eduardoabreu81/visage-forge-neo`
 4. Click **Install** and restart the WebUI
-5. On the first start, Visage checks for onnxruntime:
-   - if any onnxruntime build is installed, it is left as it is
-   - if none is, Visage installs the GPU build for NVIDIA (matching your Forge's CUDA version), `onnxruntime-directml` on AMD / Intel under Windows, or `onnxruntime` otherwise. Set `VISAGE_ORT_PACKAGE` to choose another package
-6. Open the **Visage** accordion in txt2img or img2img. Models download the first time they are needed: about 180 MB for detection and recognition, then the swap model you pick (HyperSwap is 384 MB)
+5. Open the **Visage** accordion in txt2img or img2img. Models download the first time they are needed: about 180 MB for detection and recognition, then the swap model you pick (HyperSwap is 384 MB)
+
+Visage runs on the CPU with the onnxruntime Forge already has. If Forge has none, Visage downloads a small CPU build into its own folder on the first start.
 
 To keep the models somewhere else, start Forge with `--visage-models-dir D:\models\visage` or set the folder in **Settings → Visage**.
 
-### NVIDIA card, but Visage says it runs on the CPU?
+### Using the GPU
 
-Another extension may have installed the CPU-only onnxruntime before Visage. Visage never replaces it on its own, because swapping onnxruntime builds behind your back is what broke other face swap extensions. To use the GPU, close Forge, open a terminal in the Forge folder and run:
+1. Go to **Settings → Visage** and set **Device** to **GPU**, then click **Apply settings**
+2. Visage downloads the onnxruntime build for your card in the background, into its own folder: the CUDA build that matches your Forge on NVIDIA, or DirectML on AMD and Intel under Windows. It is a few hundred MB, and until it is ready Visage keeps using the CPU
+3. From then on, Visage runs on the GPU in a small separate process, so it never mixes with the onnxruntime other extensions use. That process takes a few hundred MB of VRAM while it is loaded
 
-```
-venv\Scripts\python -m pip uninstall -y onnxruntime
-venv\Scripts\python -m pip install "onnxruntime-gpu>=1.27"
-```
+**Models → Unload models from memory**, or setting **Device** back to **CPU**, closes that process and gives the VRAM back to Forge. If something goes wrong on the GPU, Visage falls back to the CPU and the **Models** tab says why.
 
-Use `"onnxruntime-gpu<1.27"` instead if your Forge runs on CUDA 12 (the startup message tells you which one). Start Forge again: the message is gone and **Settings → Visage → Models** shows `CUDAExecutionProvider`.
+To pick another onnxruntime package for the GPU, set the `VISAGE_ORT_PACKAGE` environment variable before starting Forge.
 
 > [!Note]
-> Tested on Forge Neo 2.30 with Python 3.13, PyTorch 2.13 (CUDA 13), on the CPU and on an RTX 2070 with onnxruntime-gpu 1.31.
+> Tested on Forge Neo 2.31 with Python 3.13 on the CPU, and with the GPU option on an AMD RX 7600M XT (DirectML). Earlier versions were tested on an RTX 2070 with onnxruntime-gpu 1.31.
 
 ---
 

@@ -1,38 +1,25 @@
 """Visage dependency check, run by Forge at startup.
 
 Rules (learned from other face swap extensions breaking Forge installs):
-  * never uninstall or replace an onnxruntime build that is already there;
-  * install exactly one onnxruntime distribution, only when none is present;
+  * never install, uninstall or replace anything in Forge's venv;
+  * the onnxruntime builds Visage needs go into <extension>/runtime (lib_visage/ortenv.py);
   * no insightface, no compilers, no pkg_resources.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 from importlib import metadata
 
-import launch
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from lib_visage import ortenv  # noqa: E402
 
 TAG = "[Visage]"
-
-ORT_DISTS = (
-    "onnxruntime-gpu",
-    "onnxruntime-directml",
-    "onnxruntime-rocm",
-    "onnxruntime-migraphx",
-    "onnxruntime-openvino",
-    "onnxruntime-silicon",
-    "onnxruntime-qnn",
-    "onnxruntime",
-)
-
-
-def installed(dist: str) -> str | None:
-    try:
-        return metadata.version(dist)
-    except metadata.PackageNotFoundError:
-        return None
 
 
 def has_nvidia() -> bool:
@@ -50,67 +37,52 @@ def has_nvidia() -> bool:
         return False
 
 
-def torch_flavour() -> str:
+def torch_version() -> str:
     try:
-        version = metadata.version("torch")
+        return metadata.version("torch")
     except metadata.PackageNotFoundError:
-        return "unknown"
-    if "+rocm" in version:
-        return "rocm"
-    if "+cu" in version:
-        return "cuda"
-    return "other"
+        return ""
 
 
 def torch_cuda_major() -> int | None:
     """13 for torch 2.x+cu130, 12 for +cu128, None when torch is not a CUDA build."""
-    try:
-        version = metadata.version("torch")
-    except metadata.PackageNotFoundError:
-        return None
+    version = torch_version()
     if "+cu" not in version:
         return None
     digits = version.split("+cu", 1)[1]
     return int(digits[:-1]) if len(digits) >= 3 and digits.isdigit() else None
 
 
-def ort_gpu_spec() -> str:
-    # onnxruntime-gpu on PyPI targets CUDA 13 from 1.27 on, CUDA 12 before that
-    major = torch_cuda_major()
-    return "onnxruntime-gpu<1.27" if major is not None and major < 13 else "onnxruntime-gpu>=1.27"
+def settings() -> dict:
+    try:
+        from modules import launch_utils
+
+        if launch_utils.args.skip_install:
+            return {"_skip": True}
+        path = launch_utils.args.ui_settings_file
+    except Exception:
+        path = "config.json"
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
-def ensure_onnxruntime():
-    present = {d: v for d in ORT_DISTS if (v := installed(d))}
-    if present:
-        if len(present) > 1:
-            listing = ", ".join(f"{d} {v}" for d, v in present.items())
-            print(f"{TAG} Warning: several onnxruntime builds are installed ({listing}).")
-            print(f"{TAG}   They share one module and can break each other. Visage will not touch them;")
-            print(f"{TAG}   if face swap fails, uninstall all of them and install just one.")
-        # a CPU-only build next to an NVIDIA GPU is reported once Forge has started (scripts/visage.py)
+def main():
+    opts = settings()
+    if opts.get("_skip"):
         return
-
-    if os.environ.get("VISAGE_ORT_PACKAGE"):
-        package = os.environ["VISAGE_ORT_PACKAGE"]
-    elif sys.platform == "darwin":
-        package = "onnxruntime"
-    elif has_nvidia() and torch_flavour() != "rocm":
-        package = f'"{ort_gpu_spec()}"'
-    elif os.name == "nt":
-        package = "onnxruntime-directml"  # AMD / Intel GPUs on Windows
-    else:
-        package = "onnxruntime"
-    launch.run_pip(f"install {package}", f"{package} for Visage")
-
-
-def ensure(dist: str, spec: str | None = None, desc: str | None = None):
-    if installed(dist) is None:
-        launch.run_pip(f"install {spec or dist}", desc or f"{dist} for Visage")
+    if not ortenv.venv_has_onnxruntime() and not ortenv.installed("cpu"):
+        ortenv.install("cpu", "onnxruntime")
+    if opts.get("visage_device") == "GPU":
+        rocm = "+rocm" in torch_version()
+        package = ortenv.gpu_package(nvidia=has_nvidia() and not rocm, cuda_major=torch_cuda_major(), rocm=rocm)
+        if not ortenv.installed("gpu", package):
+            ortenv.install("gpu", package)
 
 
 try:
-    ensure_onnxruntime()
-    ensure("safetensors")  # opencv, numpy and Pillow always ship with Forge
+    main()
 except Exception as e:  # never block Forge from starting
     print(f"{TAG} dependency check failed: {e}")

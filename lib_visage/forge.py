@@ -9,6 +9,7 @@ import base64
 import hashlib
 import io
 import os
+import sys
 
 import cv2
 import numpy as np
@@ -16,7 +17,7 @@ from PIL import Image
 
 from modules import paths, shared
 
-from . import facemodel, models, pipeline, runtime
+from . import facemodel, models, ortenv, pipeline, runtime
 
 SECTION = ("visage", "Visage")
 
@@ -32,16 +33,18 @@ PARSERS = models.keys_of("parser")
 def register_settings():
     import gradio as gr
 
-    def add(key, default, label, component=None, component_args=None, info=None):
-        opt = shared.OptionInfo(default, label, component, component_args, section=SECTION)
+    def add(key, default, label, component=None, component_args=None, info=None, onchange=None):
+        opt = shared.OptionInfo(default, label, component, component_args, onchange=onchange, section=SECTION)
         if info:
             opt = opt.info(info)
         shared.opts.add_option(key, opt)
 
     add("visage_models_dir", "", "Models folder", info=f"empty = {os.path.join(paths.models_path, 'visage')}")
     add("visage_auto_download", True, "Download missing models automatically")
-    add("visage_provider", "auto", "ONNX execution provider", gr.Dropdown,
-        {"choices": list(runtime.PROVIDER_CHOICES)}, info="auto picks CUDA > ROCm > MIGraphX > DirectML > CoreML > CPU")
+    add("visage_device", "CPU", "Device", gr.Radio, {"choices": list(runtime.DEVICES)}, onchange=apply_settings,
+        info="CPU works everywhere and leaves the VRAM to the model. GPU is about 5x faster on an RTX 2070: "
+             "Visage downloads its own onnxruntime GPU build into the extension folder (Forge's venv is not touched) "
+             "and runs it in a separate process that uses a few hundred MB of VRAM")
     add("visage_unload_after", False, "Unload Visage models after every generation", info="frees VRAM at the cost of reload time")
     add("visage_report_similarity", True, "Print how closely each swapped face matches its source (ArcFace)")
     add("visage_save_original", False, "Also save the image before Visage processing (suffix -before-visage)")
@@ -53,7 +56,11 @@ def register_settings():
 def apply_settings():
     models.set_models_dir(models_root())
     models.allow_download = bool(getattr(shared.opts, "visage_auto_download", True))
-    runtime.provider_preference = getattr(shared.opts, "visage_provider", "auto") or "auto"
+    device = getattr(shared.opts, "visage_device", "CPU") or "CPU"
+    package = gpu_package()
+    runtime.configure(device, package)
+    if runtime.device == "GPU" and package and not ortenv.installed("gpu", package):
+        ortenv.install_in_background("gpu", package)  # ready for the next generation, not this click
 
 
 def cuda_major() -> int | None:
@@ -68,9 +75,23 @@ def cuda_major() -> int | None:
     return None
 
 
-def gpu_hint() -> str | None:
-    major = cuda_major()
-    return runtime.gpu_hint(major is not None, major)
+def gpu_package() -> str | None:
+    """The onnxruntime GPU build Visage would use on this machine, or None without a usable GPU."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            rocm = bool(getattr(torch.version, "hip", None))
+            return ortenv.gpu_package(nvidia=not rocm, cuda_major=cuda_major(), rocm=rocm)
+    except Exception:
+        pass
+    if os.name == "nt" or sys.platform == "darwin":  # DirectML / CoreML need no torch GPU build
+        return ortenv.gpu_package(nvidia=False, cuda_major=None)
+    return None
+
+
+def device_note() -> str | None:
+    return runtime.note(nvidia=cuda_major() is not None)
 
 
 def sfw_mode() -> str:

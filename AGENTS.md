@@ -10,12 +10,14 @@ A Forge Neo extension for face swap, face restoration and checkpoint refine. It 
 ## Layout
 
 ```
-install.py            dependency check (onnxruntime policy, see invariants)
+install.py            startup check: Visage's own CPU / GPU onnxruntime when needed (invariant 1)
 preload.py            --visage-models-dir
 lib_visage/           core package, importable without Forge
   geometry.py         5-point templates, warp, paste_back, pixel-boost tiling
   models.py           model registry, URLs, licenses, downloads to <models>/visage
-  runtime.py          onnxruntime sessions and provider selection
+  runtime.py          onnxruntime sessions, CPU / GPU device, RemoteSession for the worker
+  ortenv.py           Visage's own onnxruntime builds in <extension>/runtime (pip --target, never the venv)
+  ortworker.py        separate process that runs the GPU build (multiprocessing.connection protocol)
   analysis.py         detection (SCRFD/RetinaFace, YOLOv8-face), ArcFace embedding, FairFace, sorting
   swapper.py          inswapper / ReSwapper (emap projection) and HyperSwap
   onnxread.py         reads the emap initializer from the .onnx bytes (no `onnx` / `protobuf` dependency)
@@ -38,8 +40,11 @@ tests/test_core.py    unit tests, plus model tests when VISAGE_MODELS_DIR and VI
 
 ## Invariants (do not break)
 
-1. **Never uninstall, downgrade or replace an installed onnxruntime build.** Install one only when none
-   is present. (Other face swap extensions broke Forge by swapping `onnxruntime-gpu` for CPU onnxruntime on every boot.)
+1. **Never install, uninstall, downgrade or replace anything in Forge's venv.** Forge decides what is there
+   (its ControlNet preprocessors pull the CPU `onnxruntime` in through insightface 2.1). Visage adapts: CPU by
+   default with the venv's onnxruntime; any build it needs goes into `runtime/<flavour>` via `pip --target`, and
+   the GPU build only ever runs in the `ortworker` process. (Other face swap extensions broke Forge by swapping
+   `onnxruntime-gpu` for CPU onnxruntime on every boot; 0.4.0's own `onnxruntime-gpu` install collided with insightface's.)
 2. **No insightface, no `pkg_resources`, no compilers.** Everything must install from wheels on Python 3.13 and 3.14.
 3. **No model weights in the repo** (`*.onnx` and `*.safetensors` are gitignored). Models download from upstream on first use.
 4. `lib_visage/*` (except `forge.py`) must not import `modules.*`, so the core stays testable outside Forge.

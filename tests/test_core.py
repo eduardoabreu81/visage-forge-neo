@@ -48,16 +48,75 @@ def test_restore_guard_picks_largest_safe_visibility():
     assert used == 0.0
 
 
-def test_gpu_hint(monkeypatch):
+def test_gpu_package(monkeypatch):
+    from lib_visage import ortenv
+
+    monkeypatch.delenv("VISAGE_ORT_PACKAGE", raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert ortenv.gpu_package(True, 13) == "onnxruntime-gpu>=1.27"
+    assert ortenv.gpu_package(True, 12) == "onnxruntime-gpu<1.27"
+    assert ortenv.gpu_package(True, None) == "onnxruntime-gpu>=1.27"
+    monkeypatch.setenv("VISAGE_ORT_PACKAGE", "onnxruntime-openvino")
+    assert ortenv.gpu_package(True, 13) == "onnxruntime-openvino"
+
+
+def test_device_defaults_to_cpu_and_notes(monkeypatch):
     from lib_visage import runtime
 
-    assert runtime.ort_gpu_spec(13) == "onnxruntime-gpu>=1.27"
-    assert runtime.ort_gpu_spec(12) == "onnxruntime-gpu<1.27"
-    monkeypatch.setattr(runtime, "available_providers", lambda: ["CPUExecutionProvider"])
-    assert runtime.gpu_hint(False) is None
-    assert "onnxruntime-gpu<1.27" in runtime.gpu_hint(True, 12)
-    monkeypatch.setattr(runtime, "available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
-    assert runtime.gpu_hint(True, 13) is None
+    monkeypatch.setattr(runtime, "stop_worker", lambda: None)
+    runtime.configure("nonsense", None)
+    assert runtime.device == "CPU"
+    assert "Device to GPU" in runtime.note(nvidia=True)
+    assert runtime.note(nvidia=False) is None
+    runtime.configure("GPU", None)
+    assert "no supported GPU" in runtime.note()
+    runtime.configure("CPU", None)
+
+
+def test_remote_session_forwards_calls():
+    from lib_visage import runtime
+
+    class FakeWorker:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, *msg):
+            self.calls.append(msg)
+            return [np.ones((1, 2), np.float32)]
+
+    worker = FakeWorker()
+    meta = {"inputs": [("target", [1, 3, 256, 256], "tensor(float)"), ("source", [1, 512], "tensor(float)")],
+            "outputs": [("output", [1, 3, 256, 256], "tensor(float)"), ("mask", None, "tensor(float)")],
+            "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"]}
+    sess = runtime.RemoteSession(worker, "m.onnx", meta)
+    assert runtime.input_names(sess) == ["target", "source"]
+    assert [o.name for o in sess.get_outputs()] == ["output", "mask"]
+    feed = {"target": np.zeros((1, 3, 256, 256), np.float32)}
+    out = sess.run(None, feed)
+    assert out[0].shape == (1, 2) and worker.calls == [("run", "m.onnx", None, feed)]
+
+
+@pytest.mark.skipif(not MODELS, reason="needs VISAGE_MODELS_DIR")
+def test_worker_matches_in_process():
+    """Runs the venv's onnxruntime in the worker process and compares it with the in-process session."""
+    ort = pytest.importorskip("onnxruntime")
+    from lib_visage import runtime
+
+    models.set_models_dir(MODELS)
+    path = models.local_path("arcface_w600k_r50")
+    if not os.path.isfile(path):
+        pytest.skip("arcface_w600k_r50 is not downloaded")
+    worker = runtime._Worker(os.path.dirname(os.path.dirname(ort.__file__)))
+    try:
+        sess = runtime.RemoteSession(worker, path, worker.call("load", path, ["CPUExecutionProvider"]))
+        local = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        x = np.random.default_rng(0).random((1, 3, 112, 112)).astype(np.float32)
+        name = local.get_inputs()[0].name
+        assert np.allclose(sess.run(None, {name: x})[0], local.run(None, {name: x})[0], atol=1e-5)
+        assert worker.call("unload", None) == 1
+    finally:
+        worker.stop()
+    assert not worker.alive()
 
 
 def test_onnxread_last_initializer(tmp_path):

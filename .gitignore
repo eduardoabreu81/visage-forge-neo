@@ -7,6 +7,8 @@ __pycache__/
 *.safetensors
 *.part
 tests/data/
+# Visage's own onnxruntime builds (lib_visage/ortenv.py)
+runtime/
 .DS_Store
 Thumbs.db
 AGENTS.local.md

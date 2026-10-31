@@ -5,7 +5,7 @@ POST /visage/v1/restore     {image, options}                                   -
 POST /visage/v1/detect      {image, detector?, threshold?, classify?}          -> {faces: [...]}
 POST /visage/v1/facemodels  {name, images: [...], face_index?}                 -> {path}
 GET  /visage/v1/facemodels                                                     -> {face_models: [...]}
-GET  /visage/v1/models                                                         -> {models: [...], providers, active_provider}
+GET  /visage/v1/models                                                         -> {models: [...], device, backend, providers, active_provider, note}
 POST /visage/v1/unload                                                         -> {unloaded}
 
 Images are base64 (PNG/JPEG, optionally as data URLs). `options` takes the same
@@ -89,9 +89,11 @@ def mount(_demo, app: FastAPI):
         return {
             "version": __version__,
             "models_dir": models.models_dir(),
+            "device": runtime.device,
+            "backend": runtime.backend(),
             "providers": runtime.available_providers(),
             "active_provider": runtime.active_provider() if runtime.available_providers() else None,
-            "gpu_hint": vf.gpu_hint(),
+            "note": vf.device_note(),
             "models": [
                 {"key": k, "kind": s.kind, "label": s.title, "license": s.license, "downloaded": models.is_downloaded(k)}
                 for k, s in models.REGISTRY.items()

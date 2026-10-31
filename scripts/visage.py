@@ -121,10 +121,11 @@ def _status_models() -> str:
             mark = "✅" if models.is_downloaded(key) else "⬇️"
             rows.append(f"| {mark} | {spec.title} | {kind} | {spec.license} |")
     providers = ", ".join(runtime.available_providers()) or "onnxruntime not available"
-    hint = vf.gpu_hint()
+    note = vf.device_note()
     return (
-        (f"⚠️ {hint}\n\n" if hint else "")
-        + f"**Visage {__version__}** · models: `{models.models_dir()}` · active provider: `{_safe_provider()}`\n\n"
+        (f"ℹ️ {note}\n\n" if note else "")
+        + f"**Visage {__version__}** · models: `{models.models_dir()}` · runs on: {runtime.backend()} · "
+        f"active provider: `{_safe_provider()}`\n\n"
         f"Available providers: {providers}\n\n"
         "| | Model | Kind | License |\n|---|---|---|---|\n" + "\n".join(rows)
     )
@@ -524,11 +525,12 @@ class VisageScript(scripts.Script):
 
 def _startup_notice(*_):
     try:
-        hint = vf.gpu_hint()
+        vf.apply_settings()
+        note = runtime.note() if runtime.device == "GPU" else None  # the CPU default needs no warning
     except Exception:
-        hint = None
-    if hint:
-        print(f"[Visage] {hint.replace('`', '')}")
+        note = None
+    if note:
+        print(f"[Visage] {note.removeprefix('Visage: ')}")
 
 
 script_callbacks.on_ui_settings(vf.register_settings)
