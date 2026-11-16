@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/banner.jpg" alt="Visage for Forge Neo banner"/>
+</p>
+
 # 🎭 Visage for Forge Neo
 
 <div align="center">
