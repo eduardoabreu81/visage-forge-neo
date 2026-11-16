@@ -8,7 +8,7 @@
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
-[![Version](https://img.shields.io/badge/Version-0.4.0-brightgreen)](https://github.com/eduardoabreu81/visage-forge-neo)
+[![Version](https://img.shields.io/badge/Version-0.5.0-brightgreen)](https://github.com/eduardoabreu81/visage-forge-neo)
 ![Status](https://img.shields.io/badge/Status-Preview-orange)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)](LICENSE)
 
