@@ -36,6 +36,35 @@ def _pb_int(num, value):
     return _pb_varint(num << 3) + _pb_varint(value)
 
 
+def _blur(img, sigma=pipeline.TEXTURE_SIGMA):
+    import cv2
+    return cv2.GaussianBlur(img.astype(np.float32), (0, 0), sigma)
+
+
+def test_keep_texture_takes_face_from_swap_and_fine_detail_from_refine():
+    rng = np.random.default_rng(0)
+    yy, xx = np.mgrid[0:96, 0:96]
+    smooth = np.stack([60 + xx, 80 + yy, 120 + 0 * xx], -1).astype(np.uint8)  # soft swapped face, no texture
+    other = np.full((96, 96, 3), 150, np.float32)  # refine drifted to another person (different colours)
+    grain = rng.normal(0, 12, (96, 96, 3)).astype(np.float32)
+    refined = np.clip(other + grain, 0, 255).astype(np.uint8)
+    out = pipeline.keep_texture(smooth, refined, None, 1.0)
+    # coarse content (who the person is) still comes from the swap
+    assert np.abs(_blur(out) - _blur(smooth)).mean() < 3
+    # fine detail now comes from the refine
+    fine = lambda im: im.astype(np.float32) - _blur(im)
+    assert np.corrcoef(fine(out).ravel(), fine(refined).ravel())[0, 1] > 0.9
+
+
+def test_keep_texture_off_or_outside_mask_changes_nothing():
+    rng = np.random.default_rng(1)
+    a = rng.integers(0, 255, (32, 32, 3), dtype=np.uint8)
+    b = rng.integers(0, 255, (32, 32, 3), dtype=np.uint8)
+    assert pipeline.keep_texture(a, b, None, 0.0) is a
+    assert np.array_equal(pipeline.keep_texture(a, b, np.zeros((32, 32), np.float32), 1.0), a)
+    assert pipeline.keep_texture(a, b[:16], None, 1.0) is a  # size mismatch: keep the swap
+
+
 def test_restore_guard_picks_largest_safe_visibility():
     # likeness falls 0.1 per unit of visibility: with a 0.02 limit, 0.6 and 0.3 fail and 0.15 passes
     render = lambda v: np.full((2, 2), v)  # noqa: E731

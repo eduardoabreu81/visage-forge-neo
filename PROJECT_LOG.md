@@ -1,5 +1,25 @@
 # PROJECT_LOG
 
+## 2026-11-19 — refine skin texture for large faces (issue #2)
+
+- Report (Blueblizard): faces that fill a 1920x1080 Flux picture come out blurry; detection size 1024, pixel boost
+  4x and denoise did not help. Reproduced with MOSS turbo (no Flux on the test machine), face 1075 px tall, seed fixed.
+  Measured inside the face box: Laplacian variance (sharpness) and ArcFace cosine to the source (identity).
+- Findings: the original has 118 sharpness. Swaps stay low (swap models draw at 128–256 px), and restorers make it
+  worse: GFPGAN 0.8 (the Extras default) 5.1, GPEN 512 + Face boost 8.8, GPEN 1024 + Face boost 26.1 (identity 0.708).
+  Refine does not help: with "Swap again" on, the second swap brings the softness back. With it off, a 0.5 denoise is
+  sharp (80) but the face drifts back to the original person (identity 0.26). A restored first swap also gives the
+  refine no texture to start from.
+- New: Refine → "Keep the refine's skin texture" (`refine_texture`, 0–1, default 0, appended to ARG_KEYS;
+  `pipeline.keep_texture`). After the second swap, detail finer than 2 px (Gaussian high-pass) comes from the refined
+  picture, and everything coarser comes from the swap, inside the face mask. With the option on, the first swap skips
+  the restorer (`panel.first_pass_options`), and the second swap restores as usual. If the refine fails, the swap is
+  redone with the restorer.
+- Result at refine 0.45, texture 1: sharpness 75–77 with GFPGAN, GPEN 512 or GPEN 1024; identity 0.64 / 0.68 / 0.70
+  (plain swap with the same restorer: 0.66 / 0.68 / 0.71). Evidence in `.local/bigface/`.
+- Tested by copying the changed files into the desktop-casa extension, then restored with `git checkout` (that
+  machine is otherwise updated only through GitHub).
+
 ## 2026-10-31 — 0.5.0, CPU by default, GPU in its own process
 
 - Clean reinstall of the RTX 2070 Forge (Neo 2.31, torch 2.14.0+cu130): 0.4.0's `install.py` put `onnxruntime-gpu`

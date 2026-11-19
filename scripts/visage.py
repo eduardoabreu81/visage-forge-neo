@@ -43,6 +43,8 @@ def infotext_params(opts: pipeline.Options, s: dict) -> dict:
         params["Visage refine"] = f"{float(s.get('refine_denoise') or 0.15):g}"
         if s.get("refine_extend_down"):
             params["Visage refine extend"] = f"{float(s.get('refine_extend_down')):g}"
+        if s.get("refine_reswap", True) and s.get("refine_texture"):
+            params["Visage refine texture"] = f"{float(s.get('refine_texture')):g}"
     return params
 
 
@@ -60,6 +62,7 @@ def paste_fields(c: dict) -> list:
         (c["refine"], lambda d: "Visage refine" in d if "Visage" in d else None),
         (c["refine_denoise"], "Visage refine"),
         (c["refine_extend_down"], lambda d: d.get("Visage refine extend", 0) if "Visage" in d else None),
+        (c["refine_texture"], lambda d: d.get("Visage refine texture", 0) if "Visage" in d else None),
     ]
 
 
@@ -185,10 +188,12 @@ class VisageScript(scripts.Script):
         try:
             original = pp.image
             arr = np.array(original.convert("RGB"))
-            result = pipeline.process(arr, idents, opts)
+            first = panel.first_pass_options(opts, s)
+            result = pipeline.process(arr, idents, first)
             print(f"[Visage] {result.message}{_similarity_note(result)}")
             if not result.swapped:
                 return
+            refined = False
             if getattr(shared.opts, "visage_save_original", False) and p.save_samples():
                 try:
                     images.save_image(original, p.outpath_samples, "", p.all_seeds[pp.index] if p.all_seeds else p.seed,
@@ -206,10 +211,14 @@ class VisageScript(scripts.Script):
                         again = pipeline.process(np.array(out.convert("RGB")), idents, opts)
                         print(f"[Visage] after refine: {again.message}{_similarity_note(again)}")
                         if again.swapped:
-                            out = Image.fromarray(again.image)
+                            out = Image.fromarray(pipeline.keep_texture(again.image, np.array(out.convert("RGB")),
+                                                                        again.face_mask, float(s.get("refine_texture") or 0)))
+                    refined = True
                 except Exception as e:
                     print(f"[Visage] refine failed, keeping the plain swap: {e}")
                     traceback.print_exc()
+            if not refined and first is not opts:  # the first pass skipped the restorer for the refine
+                out = Image.fromarray(pipeline.process(arr, idents, opts).image)
             out.info = dict(original.info)
             pp.image = out
         except Exception as e:

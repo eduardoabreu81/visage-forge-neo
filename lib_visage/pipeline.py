@@ -256,6 +256,28 @@ def process(frame: np.ndarray, identities: list[Identity], opts: Options, progre
                   message=message, similarity=similarity, flagged=flagged, restore_used=restore_used)
 
 
+TEXTURE_SIGMA = 2.0  # px: what counts as fine texture (pores, stubble, lashes); larger sizes are the face itself
+
+
+def keep_texture(swapped: np.ndarray, textured: np.ndarray, mask: np.ndarray | None, amount: float,
+                 sigma: float = TEXTURE_SIGMA) -> np.ndarray:
+    """Give the swapped face the fine texture of ``textured`` (the refined picture before the second swap).
+
+    Swap models draw the face at 128-256 px, so a large face is an upscale and looks soft. A refine at a higher
+    denoise draws real skin texture but drifts back to the original person. This keeps everything coarser than
+    ``sigma`` from the swap (who the person is) and takes only the detail finer than ``sigma`` from the refine.
+    """
+    amount = float(np.clip(amount, 0.0, 1.0))
+    if amount <= 0 or swapped.shape != textured.shape:
+        return swapped
+    a = swapped.astype(np.float32)
+    b = textured.astype(np.float32)
+    fine_a = a - cv2.GaussianBlur(a, (0, 0), sigma)
+    fine_b = b - cv2.GaussianBlur(b, (0, 0), sigma)
+    weight = amount if mask is None else (np.clip(mask, 0, 1).astype(np.float32) * amount)[..., None]
+    return np.clip(a + (fine_b - fine_a) * weight, 0, 255).astype(np.uint8)
+
+
 def restore_only(frame: np.ndarray, opts: Options, progress=None) -> Result:
     """Run just the restorer on the selected faces (no swap)."""
     t0 = time.time()

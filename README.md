@@ -127,6 +127,10 @@ The face swap extensions people used with A1111 depend on `insightface`. Older v
 - **Face boost**: restore inside the swap crop before pasting it back
 - **Likeness guard**: restorers can make a face look more generic. Set **Likeness guard** to 0.02–0.03 and Visage checks each face after restoring it; if it now looks less like the source than that, Visage lowers the restorer strength for that face. With CodeFormer at full strength, the likeness dropped by up to 0.16 without the guard and stayed within 0.02 with it
 - **Refine with the checkpoint**: a low-denoise inpaint of the new face with the model you are using, so the face takes on the picture's lighting, grain and style. It then swaps again to keep the identity
+- **Sharp skin on large faces**: swap models draw the face small (128–256 px), so a close-up face comes out soft, and a restorer makes it smoother still. In **Refine**, set **Keep the refine's skin texture** to 1, leave **Swap again after refining** on and use a denoise of 0.4–0.5. The identity comes from the swap, and the pores, stubble and lashes come from the refine. For a big face, **GPEN-BFR 1024** with **Face boost** is also sharper than the 512 restorers
+
+<p align="center"><img src=".github/images/refine-texture.jpg" alt="Close-ups of a face that fills a 1920x1080 picture: the generated face, the swap with GFPGAN (soft skin), the swap with GPEN 1024 (sharper) and the swap with the refine's skin texture (pores and lashes)" width="900"></p>
+
 - **Beards**: a swap model only redraws the face itself, so a full beard stops at the jaw. In **Refine**, set **Extend the refine area below the jaw** to 30–50, describe the beard in the refine prompt and use a denoise around 0.5
 
 ### 👥 Choose Your Faces
@@ -153,7 +157,7 @@ The face swap extensions people used with A1111 depend on `insightface`. Older v
 
 - **Extras tab**: the full Visage panel for any picture, including batches: swap or only restore faces, every mask and restore option, saving and blending face models, and refine with the loaded checkpoint. Refine fields you leave empty take the prompt, sampler, steps, CFG and seed from the picture's PNG Info, or from your UI preset when the picture has none
 - **PNG Info / Send to** restores the Visage settings (the source face is not stored in the picture)
-- **X/Y/Z plot** axes: swap model, identity strength, pixel boost, face restorer, restorer visibility, refine denoise and target faces
+- **X/Y/Z plot** axes: swap model, identity strength, pixel boost, face restorer, restorer visibility, refine denoise, refine skin texture and target faces
 - **REST API** under `/visage/v1/`
 
 ### 🛡️ Safe by Design
@@ -216,6 +220,7 @@ To pick another onnxruntime package for the GPU, set the `VISAGE_ORT_PACKAGE` en
 | Full beard on the source | HyperSwap 1C | 2x | GFPGAN 1.4 at 0.6 | Refine, extend below the jaw 30–50, denoise about 0.5, beard in the refine prompt |
 | Black and white, strong grading | HyperSwap 1A | 2x | GFPGAN 1.4 at 0.6 | Match skin tone |
 | Hands or objects over the face | any | 2x | any | Occlusion mask |
+| Close-up, face fills the picture | HyperSwap 1A | 4x | GPEN-BFR 1024 at 0.6, Face boost | Refine, denoise 0.4–0.5, skin texture 1 |
 | Face looks pasted on | any | 2x | any | Refine, denoise 0.10–0.15 on turbo models, 0.2–0.3 on regular ones |
 
 ---
@@ -270,6 +275,7 @@ Visage also works in `/sdapi/v1/txt2img` and `/sdapi/v1/img2img` through `always
 - Swap models copy who the person is, not what is on the skin: bindis, piercings, moles, make-up and tattoos do not carry over. Add them to the refine prompt (for example "small red bindi on her forehead") with a denoise around 0.3
 - Using DLSS 5 or another enhancer that works on the finished picture? Turn both on: Visage swaps first, then the enhancer improves the whole picture, new face included (with inpainting masks, Visage still swaps after the composite)
 - Small faces in wide shots gain the most from pixel boost 2x and a restorer
+- Large faces in close-ups look soft after any swap: turn on **Keep the refine's skin texture** (see Restore and Refine)
 - **Unload models from memory** in the Models tab frees the memory Visage uses, without restarting Forge
 
 ---

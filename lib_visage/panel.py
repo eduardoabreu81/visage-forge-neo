@@ -5,6 +5,7 @@ Forge glue like forge.py: imports Gradio and `modules`, so only import it from i
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import traceback
 
@@ -28,7 +29,7 @@ ARG_KEYS = [
     "mask_occlusion", "occluder", "mask_region", "regions", "region_dilate", "keep_mouth",
     "restorer", "restorer_visibility", "codeformer_weight", "face_boost",
     "refine", "refine_denoise", "refine_steps", "refine_padding", "refine_prompt", "refine_negative",
-    "refine_reswap", "refine_extend_down", "restore_guard",
+    "refine_reswap", "refine_extend_down", "restore_guard", "refine_texture",
 ]
 
 # txt2img / img2img only: the Extras picture is already the input and the output.
@@ -72,6 +73,15 @@ def build_options(s: dict) -> pipeline.Options:
         restore_guard=float(s.get("restore_guard") or 0),
         sfw=vf.sfw_mode(),
     )
+
+
+def first_pass_options(opts: pipeline.Options, s: dict) -> pipeline.Options:
+    """With "Keep the refine's skin texture", the swap before the refine skips the restorer: a restored face is
+    smooth, and the refine keeps that smoothness instead of drawing skin texture. The second swap restores as usual."""
+    texture = s.get("refine") and s.get("refine_reswap", True) and float(s.get("refine_texture") or 0) > 0
+    if texture and opts.restorer not in (None, "", "none"):
+        return dataclasses.replace(opts, restorer="none")
+    return opts
 
 
 def similarity_note(result) -> str:
@@ -282,6 +292,10 @@ def build(eid, *, is_img2img: bool = False, extras: bool = False) -> dict:
                                               else "Refine negative prompt (empty = generation negative)")
             c["refine_reswap"] = gr.Checkbox(True, label="Swap again after refining (keeps the identity, keeps the new lighting)",
                                              elem_id=eid("refine_reswap"))
+            c["refine_texture"] = gr.Slider(0.0, 1.0, 0.0, step=0.05, label="Keep the refine's skin texture",
+                                            elem_id=eid("refine_texture"),
+                                            info="for large faces that come out soft: keeps the identity from the swap and "
+                                                 "the pores and lashes from the refine. Use 1 with Swap again on and a denoise of 0.4-0.5")
             c["refine_extend_down"] = gr.Slider(0, 60, 0, step=5, label="Extend the refine area below the jaw (% of face height)",
                                                 elem_id=eid("refine_extend_down"),
                                                 info="the swapper only redraws the face; use 30-50 with a refine prompt "

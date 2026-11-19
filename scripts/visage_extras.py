@@ -53,16 +53,22 @@ class ScriptPostprocessingVisage(scripts_postprocessing.ScriptPostprocessing):
             if not idents:
                 print("[Visage] Extras: no source identity, skipped (check the Source tab)")
                 return
-            result = pipeline.process(arr, idents, opts)
+            first = panel.first_pass_options(opts, s)
+            result = pipeline.process(arr, idents, first)
             print(f"[Visage] Extras: {result.message}{panel.similarity_note(result)}")
             if not result.swapped:
                 return
             out = Image.fromarray(result.image)
             info = f"swap, {opts.swapper}"
+            refined = False
             if s.get("refine") and result.face_mask is not None:
                 out, refined = self._refine(source, out, result.face_mask, idents, opts, s)
                 if refined:
                     info += f", refine {float(s.get('refine_denoise') or 0.15):g}"
+                    if s.get("refine_reswap", True) and s.get("refine_texture"):
+                        info += f", texture {float(s.get('refine_texture')):g}"
+            if not refined and first is not opts:  # the first pass skipped the restorer for the refine
+                out = Image.fromarray(pipeline.process(arr, idents, opts).image)
             pp.image = out
             pp.info["Visage"] = info
         except Exception as e:
@@ -86,7 +92,8 @@ class ScriptPostprocessingVisage(scripts_postprocessing.ScriptPostprocessing):
                 again = pipeline.process(np.array(refined.convert("RGB")), idents, opts)
                 print(f"[Visage] Extras after refine: {again.message}{panel.similarity_note(again)}")
                 if again.swapped:
-                    refined = Image.fromarray(again.image)
+                    refined = Image.fromarray(pipeline.keep_texture(again.image, np.array(refined.convert("RGB")),
+                                                                    again.face_mask, float(s.get("refine_texture") or 0)))
             return refined, True
         except Exception as e:
             print(f"[Visage] Extras refine failed, keeping the plain swap: {e}")

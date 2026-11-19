@@ -20,7 +20,7 @@ def _set(key, convert=None):
     def apply(p, x, xs):
         overrides = dict(getattr(p, "_visage_xyz", None) or {})
         overrides[key] = convert(x) if convert else x
-        if key == "refine_denoise":
+        if key in ("refine_denoise", "refine_texture"):
             overrides["refine"] = True
         p._visage_xyz = overrides
 
@@ -46,6 +46,7 @@ def add_axes():
         xyz.AxisOption("[Visage] Face restorer", str, _set("restorer"), format_value=xyz.format_value, choices=lambda: list(vf.RESTORERS)),
         xyz.AxisOption("[Visage] Restorer visibility", float, _set("restorer_visibility"), format_value=fmt),
         xyz.AxisOption("[Visage] Refine denoise", float, _set("refine_denoise"), format_value=fmt),
+        xyz.AxisOption("[Visage] Refine skin texture", float, _set("refine_texture"), format_value=fmt),
         xyz.AxisOption("[Visage] Target faces", str, _set("target_indexes"), format_value=fmt),
     ])
 
