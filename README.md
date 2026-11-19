@@ -151,7 +151,7 @@ The face swap extensions people used with A1111 depend on `insightface`. Older v
 
 ### 🧰 Forge Integration
 
-- **Extras tab**: swap or only restore faces on any picture, including batches
+- **Extras tab**: the full Visage panel for any picture, including batches: swap or only restore faces, every mask and restore option, saving and blending face models, and refine with the loaded checkpoint. Refine fields you leave empty take the prompt, sampler, steps, CFG and seed from the picture's PNG Info, or from your UI preset when the picture has none
 - **PNG Info / Send to** restores the Visage settings (the source face is not stored in the picture)
 - **X/Y/Z plot** axes: swap model, identity strength, pixel boost, face restorer, restorer visibility, refine denoise and target faces
 - **REST API** under `/visage/v1/`

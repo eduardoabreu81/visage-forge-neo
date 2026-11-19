@@ -10,6 +10,7 @@ import hashlib
 import io
 import os
 import sys
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -226,8 +227,83 @@ def extend_mask_down(mask: np.ndarray, extend: float) -> np.ndarray:
     return out
 
 
-def refine(p, image: Image.Image, face_mask: np.ndarray, denoise: float, steps: int, padding: int,
-           prompt: str, negative: str, index: int, extend_down: float = 0.0) -> Image.Image:
+@dataclass
+class RefineSettings:
+    """What the nested refine img2img borrows from a generation (or, in Extras, from the picture)."""
+
+    prompt: str
+    negative_prompt: str
+    seed: int
+    subseed: int
+    sampler_name: str
+    scheduler: str | None
+    steps: int
+    cfg_scale: float
+    distilled_cfg_scale: float
+    outpath_samples: str
+    outpath_grids: str
+
+
+def refine_settings_from_p(p, index: int, steps: int, prompt: str, negative: str) -> RefineSettings:
+    """Settings of image `index` of a txt2img / img2img job; panel prompt and steps win when set."""
+
+    def pick(values, fallback):
+        try:
+            return values[index] if values else fallback
+        except (IndexError, TypeError):
+            return fallback
+
+    return RefineSettings(
+        prompt=prompt or pick(getattr(p, "all_prompts", None), p.prompt),
+        negative_prompt=negative or pick(getattr(p, "all_negative_prompts", None), p.negative_prompt),
+        seed=pick(getattr(p, "all_seeds", None), p.seed),
+        subseed=pick(getattr(p, "all_subseeds", None), p.subseed),
+        sampler_name=p.sampler_name,
+        scheduler=getattr(p, "scheduler", None),
+        steps=int(steps) if steps else p.steps,
+        cfg_scale=p.cfg_scale,
+        distilled_cfg_scale=getattr(p, "distilled_cfg_scale", 3.5),
+        outpath_samples=p.outpath_samples,
+        outpath_grids=p.outpath_grids,
+    )
+
+
+def _preset_img2img_defaults() -> dict:
+    """The current UI preset's img2img sampler, scheduler, steps and CFG (Forge Neo stores them per preset)."""
+    preset = getattr(shared.opts, "forge_preset", "") or ""
+    get = lambda name, default: getattr(shared.opts, f"{preset}_i2i_{name}", default)  # noqa: E731
+    return {"sampler": get("sampler", "Euler"), "scheduler": get("scheduler", "Simple"), "steps": get("step", 20),
+            "cfg": get("cfg", 7.0), "dcfg": get("dcfg", 3.0)}
+
+
+def picture_infotext(image: Image.Image) -> dict:
+    """The generation parameters saved in a picture (PNG Info), parsed; {} when there are none."""
+    try:
+        from modules import images, infotext_utils
+
+        text, _ = images.read_info_from_image(image)
+        return infotext_utils.parse_generation_parameters(text) if text else {}
+    except Exception as e:
+        print(f"[Visage] could not read the picture's generation info: {e}")
+        return {}
+
+
+def refine_settings_for_picture(image: Image.Image, fields: dict) -> tuple[RefineSettings, dict]:
+    """Settings for the Extras tab: panel fields, then the picture's generation info, then the preset."""
+    from . import refine_args
+
+    r = refine_args.resolve(fields, picture_infotext(image), _preset_img2img_defaults())
+    outdir = shared.opts.outdir_samples or shared.opts.outdir_img2img_samples
+    settings = RefineSettings(
+        prompt=r["prompt"], negative_prompt=r["negative_prompt"], seed=r["seed"], subseed=-1,
+        sampler_name=r["sampler_name"], scheduler=r["scheduler"], steps=r["steps"], cfg_scale=r["cfg_scale"],
+        distilled_cfg_scale=r["distilled_cfg_scale"], outpath_samples=outdir, outpath_grids=outdir,
+    )
+    return settings, r["sources"]
+
+
+def refine(settings: RefineSettings, image: Image.Image, face_mask: np.ndarray, denoise: float, padding: int,
+           extend_down: float = 0.0) -> Image.Image:
     """Low-denoise inpaint of the swapped area with the loaded checkpoint, so the new face
     picks up the scene's lighting, grain and style. Runs a nested img2img with scripts disabled."""
     from modules.processing import StableDiffusionProcessingImg2Img, process_images
@@ -238,30 +314,23 @@ def refine(p, image: Image.Image, face_mask: np.ndarray, denoise: float, steps: 
     mask = extend_mask_down(mask, extend_down)
     mask_img = Image.fromarray(mask, mode="L")
 
-    def pick(values, fallback):
-        try:
-            return values[index] if values else fallback
-        except (IndexError, TypeError):
-            return fallback
-
-    seed = pick(getattr(p, "all_seeds", None), p.seed)
     i2i = StableDiffusionProcessingImg2Img(
         sd_model=shared.sd_model,
-        outpath_samples=p.outpath_samples,
-        outpath_grids=p.outpath_grids,
-        prompt=prompt or pick(getattr(p, "all_prompts", None), p.prompt),
-        negative_prompt=negative or pick(getattr(p, "all_negative_prompts", None), p.negative_prompt),
+        outpath_samples=settings.outpath_samples,
+        outpath_grids=settings.outpath_grids,
+        prompt=settings.prompt,
+        negative_prompt=settings.negative_prompt,
         styles=[],
-        seed=seed,
-        subseed=pick(getattr(p, "all_subseeds", None), p.subseed),
+        seed=settings.seed,
+        subseed=settings.subseed,
         subseed_strength=0,
-        sampler_name=p.sampler_name,
-        scheduler=getattr(p, "scheduler", None),
+        sampler_name=settings.sampler_name,
+        scheduler=settings.scheduler,
         batch_size=1,
         n_iter=1,
-        steps=int(steps) if steps else p.steps,
-        cfg_scale=p.cfg_scale,
-        distilled_cfg_scale=getattr(p, "distilled_cfg_scale", 3.5),
+        steps=int(settings.steps),
+        cfg_scale=settings.cfg_scale,
+        distilled_cfg_scale=settings.distilled_cfg_scale,
         width=image.width,
         height=image.height,
         restore_faces=False,

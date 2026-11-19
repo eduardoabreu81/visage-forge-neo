@@ -1,20 +1,20 @@
-"""Visage in the Extras tab: swap or restore faces on any image (single or batch)."""
+"""Visage in the Extras tab: swap, restore and refine faces on any image (single or batch), with the full panel."""
 
 import os
 import sys
+import traceback
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-import gradio as gr
 import numpy as np
 from PIL import Image
 
 from modules import scripts_postprocessing
 from modules.ui_components import InputAccordion
 
-from lib_visage import analysis, pipeline
+from lib_visage import panel, pipeline
 from lib_visage import forge as vf
 
 
@@ -23,63 +23,72 @@ class ScriptPostprocessingVisage(scripts_postprocessing.ScriptPostprocessing):
     order = 1900
 
     def ui(self):
+        eid = lambda name: f"extras_visage_{name}"  # noqa: E731
         with InputAccordion(False, label="Visage", elem_id="extras_visage") as enabled:
-            with gr.Row():
-                mode = gr.Radio(["Swap", "Restore only"], value="Swap", label="Mode", elem_id="extras_visage_mode")
-                source_type = gr.Radio(["Image", "Face model"], value="Image", label="Source", elem_id="extras_visage_source_type")
-            with gr.Row():
-                source_image = gr.Image(label="Source face", type="numpy", image_mode="RGB", height=200, elem_id="extras_visage_source")
-                with gr.Column():
-                    face_model = gr.Dropdown(vf.face_model_choices(), label="Face model", elem_id="extras_visage_face_model")
-                    gr.Button("🔄 Refresh face models").click(lambda: gr.update(choices=vf.face_model_choices()), None, face_model, show_progress=False)
-                    source_indexes = gr.Textbox("0", label="Source face index(es)", elem_id="extras_visage_source_indexes")
-                    target_indexes = gr.Textbox("all", label="Target face index(es)", elem_id="extras_visage_target_indexes")
-            with gr.Row():
-                swapper = gr.Dropdown(vf.SWAPPERS, value="hyperswap_1a_256", label="Swap model", elem_id="extras_visage_swapper")
-                pixel_boost = gr.Radio(["1x", "2x", "4x"], value="2x", label="Pixel boost", elem_id="extras_visage_boost")
-                strength = gr.Slider(0.0, 1.5, 1.0, step=0.05, label="Identity strength", elem_id="extras_visage_strength")
-            with gr.Row():
-                sort_order = gr.Dropdown(analysis.SORT_ORDERS, value="large-small", label="Face order", elem_id="extras_visage_order")
-                occlusion = gr.Checkbox(False, label="Occlusion mask", elem_id="extras_visage_occlusion")
-                color_match = gr.Checkbox(False, label="Match skin tone", elem_id="extras_visage_color")
-            with gr.Row():
-                restorer = gr.Dropdown(vf.RESTORERS, value="gfpgan_1.4", label="Face restorer", elem_id="extras_visage_restorer")
-                visibility = gr.Slider(0.0, 1.0, 0.8, step=0.05, label="Restorer visibility", elem_id="extras_visage_visibility")
-                codeformer_weight = gr.Slider(0.0, 1.0, 0.5, step=0.05, label="CodeFormer fidelity", elem_id="extras_visage_cf")
+            c = panel.build(eid, extras=True)
+        return {"enabled": enabled, **c}
 
-        return {
-            "enabled": enabled, "mode": mode, "source_type": source_type, "source_image": source_image,
-            "face_model": face_model, "source_indexes": source_indexes, "target_indexes": target_indexes,
-            "swapper": swapper, "pixel_boost": pixel_boost, "strength": strength, "sort_order": sort_order,
-            "occlusion": occlusion, "color_match": color_match, "restorer": restorer, "visibility": visibility,
-            "codeformer_weight": codeformer_weight,
-        }
-
-    def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled=False, mode="Swap", source_type="Image",
-                source_image=None, face_model=None, source_indexes="0", target_indexes="all", swapper="hyperswap_1a_256",
-                pixel_boost="2x", strength=1.0, sort_order="large-small", occlusion=False, color_match=False,
-                restorer="none", visibility=0.8, codeformer_weight=0.5):
+    def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled=False, mode="Swap", **s):
         if not enabled:
             return
-        vf.apply_settings()
-        opts = pipeline.Options(
-            swapper=swapper, target_indexes=target_indexes, sort_order=sort_order, strength=float(strength),
-            pixel_boost=int(str(pixel_boost).rstrip("x")), mask_occlusion=bool(occlusion), color_match=bool(color_match),
-            restorer=restorer or "none", restorer_visibility=float(visibility), codeformer_weight=float(codeformer_weight),
-            sfw=vf.sfw_mode(),
-        )
-        arr = np.array(pp.image.convert("RGB"))
-        if mode == "Restore only":
-            result = pipeline.restore_only(arr, opts)
-        else:
-            idents, notes = vf.resolve_identities(source_type, source_image, None, face_model, source_indexes, opts)
+        for key, value in panel.EXTRAS_DEFAULTS.items():
+            s.setdefault(key, value)
+        try:
+            vf.apply_settings()
+            opts = panel.build_options(s)
+            source = pp.image
+            arr = np.array(source.convert("RGB"))
+            if mode == "Restore only":
+                result = pipeline.restore_only(arr, opts)
+                print(f"[Visage] Extras: {result.message}")
+                if result.swapped:
+                    pp.image = Image.fromarray(result.image)
+                    pp.info["Visage"] = f"restore only, {opts.restorer}"
+                return
+
+            idents, notes = vf.resolve_identities(s.get("source_type") or "Image", s.get("source_image"), s.get("source_files"),
+                                                  s.get("face_model"), s.get("source_indexes"), opts)
             for n in notes:
                 print(f"[Visage] {n}")
             if not idents:
-                print("[Visage] Extras: no source identity, skipped")
+                print("[Visage] Extras: no source identity, skipped (check the Source tab)")
                 return
             result = pipeline.process(arr, idents, opts)
-        print(f"[Visage] Extras: {result.message}")
-        if result.swapped:
-            pp.image = Image.fromarray(result.image)
-            pp.info["Visage"] = f"{mode.lower()}, {swapper if mode == 'Swap' else restorer}"
+            print(f"[Visage] Extras: {result.message}{panel.similarity_note(result)}")
+            if not result.swapped:
+                return
+            out = Image.fromarray(result.image)
+            info = f"swap, {opts.swapper}"
+            if s.get("refine") and result.face_mask is not None:
+                out, refined = self._refine(source, out, result.face_mask, idents, opts, s)
+                if refined:
+                    info += f", refine {float(s.get('refine_denoise') or 0.15):g}"
+            pp.image = out
+            pp.info["Visage"] = info
+        except Exception as e:
+            print(f"[Visage] Extras failed: {e}")
+            traceback.print_exc()
+
+    @staticmethod
+    def _refine(source, out, face_mask, idents, opts, s):
+        """Refine with the loaded checkpoint; the settings come from the panel, the picture's PNG Info or the preset."""
+        try:
+            fields = {"prompt": s.get("refine_prompt"), "negative": s.get("refine_negative"), "steps": s.get("refine_steps"),
+                      "sampler": s.get("refine_sampler"), "scheduler": s.get("refine_scheduler"), "cfg": s.get("refine_cfg"),
+                      "seed": s.get("refine_seed")}
+            settings, sources = vf.refine_settings_for_picture(source, fields)
+            from_picture = sorted(k for k, v in sources.items() if v == "picture")
+            print(f"[Visage] Extras refine: {settings.sampler_name} / {settings.scheduler}, {settings.steps} steps, "
+                  f"CFG {settings.cfg_scale:g}" + (f" (from the picture: {', '.join(from_picture)})" if from_picture else ""))
+            refined = vf.refine(settings, out, face_mask, s.get("refine_denoise") or 0.15, int(s.get("refine_padding") or 48),
+                                float(s.get("refine_extend_down") or 0) / 100)
+            if s.get("refine_reswap", True):
+                again = pipeline.process(np.array(refined.convert("RGB")), idents, opts)
+                print(f"[Visage] Extras after refine: {again.message}{panel.similarity_note(again)}")
+                if again.swapped:
+                    refined = Image.fromarray(again.image)
+            return refined, True
+        except Exception as e:
+            print(f"[Visage] Extras refine failed, keeping the plain swap: {e}")
+            traceback.print_exc()
+            return out, False

@@ -26,9 +26,11 @@ lib_visage/           core package, importable without Forge
   facemodel.py        Identity, average, .safetensors face models (and ReActor face models)
   pipeline.py         Options dataclass, process(), restore_only()
   forge.py            Forge glue: settings, paths, image conversion, identity cache, refine pass
+  panel.py            Forge glue: the Visage panel (Gradio), shared by scripts/visage.py and visage_extras.py; ARG_KEYS
+  refine_args.py      Extras refine settings: panel field, then the picture's PNG Info, then the UI preset
 scripts/
   visage.py           AlwaysVisible script (txt2img / img2img UI and hooks)
-  visage_extras.py    Extras tab postprocessing
+  visage_extras.py    Extras tab postprocessing (the same panel, plus Mode and the refine sampler / CFG / seed)
   visage_api.py       /visage/v1/* FastAPI routes
   visage_xyz.py       X/Y/Z plot axes (override panel values via p._visage_xyz)
 lib_visage/hashes.py  pinned SHA-256 + size per model (regenerate from HF LFS metadata when adding models)
@@ -47,11 +49,11 @@ tests/test_core.py    unit tests, plus model tests when VISAGE_MODELS_DIR and VI
    `onnxruntime-gpu` for CPU onnxruntime on every boot; 0.4.0's own `onnxruntime-gpu` install collided with insightface's.)
 2. **No insightface, no `pkg_resources`, no compilers.** Everything must install from wheels on Python 3.13 and 3.14.
 3. **No model weights in the repo** (`*.onnx` and `*.safetensors` are gitignored). Models download from upstream on first use.
-4. `lib_visage/*` (except `forge.py`) must not import `modules.*`, so the core stays testable outside Forge.
+4. `lib_visage/*` (except `forge.py` and `panel.py`) must not import `modules.*`, so the core stays testable outside Forge.
 5. Every frame in the pipeline is **RGB uint8**. XSeg is the only model fed BGR, and `masks.occlusion_mask` handles that conversion.
 6. Use the import path `lib_visage`, not a bare `scripts.*`: other extensions have broken the shared `scripts`
    namespace in Forge before.
-7. Script args are positional. `ARG_KEYS` in `scripts/visage.py` defines their order and it is part of the API.
+7. Script args are positional. `ARG_KEYS` in `lib_visage/panel.py` (re-exported by `scripts/visage.py`) defines their order and it is part of the API.
    Append new keys at the end only.
 8. A nested refine img2img sets `_visage_nested`, and the hooks must skip it.
 
