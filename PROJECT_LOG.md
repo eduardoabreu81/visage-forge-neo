@@ -1,6 +1,6 @@
 # PROJECT_LOG
 
-## 2026-11-19 — refine skin texture for large faces (issue #2)
+## 2026-11-19 — 0.5.1, full Extras panel and refine skin texture (issue #2)
 
 - Report (Blueblizard): faces that fill a 1920x1080 Flux picture come out blurry; detection size 1024, pixel boost
   4x and denoise did not help. Reproduced with MOSS turbo (no Flux on the test machine), face 1075 px tall, seed fixed.

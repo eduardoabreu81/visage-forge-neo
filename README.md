@@ -8,7 +8,7 @@
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
-[![Version](https://img.shields.io/badge/Version-0.5.0-brightgreen)](https://github.com/eduardoabreu81/visage-forge-neo)
+[![Version](https://img.shields.io/badge/Version-0.5.1-brightgreen)](https://github.com/eduardoabreu81/visage-forge-neo)
 ![Status](https://img.shields.io/badge/Status-Preview-orange)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-green.svg)](LICENSE)
 
@@ -46,6 +46,11 @@ It is **ONNX only**: no insightface, no extra packages that fight over onnxrunti
 ---
 
 ## 🆕 What's New
+
+### v0.5.1 - Full Extras Panel and Sharp Close-ups
+
+- **The Extras tab has the full Visage panel**: every source type, detection, mask and restore option, face models, and refine with the loaded checkpoint. Refine fields you leave empty take the settings from the picture's PNG Info
+- **Sharp skin on large faces**: in **Refine**, the new **Keep the refine's skin texture** option keeps the identity from the swap and the pores, stubble and lashes from the refine, so a face that fills a close-up no longer comes out soft
 
 ### v0.5.0 - CPU by Default, GPU When You Want It
 
